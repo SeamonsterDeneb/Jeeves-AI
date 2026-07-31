@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Reginald Jeeves</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/base16/eighties.min.css">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+  :root{
+    --ink-deep:#101d17;
+    --ink-panel:#182920;
+    --ink-panel-2:#1f342a;
+    --parchment:#f1e8d6;
+    --parchment-dim:#cfc6ae;
+    --brass:#b8925a;
+    --brass-bright:#dcb679;
+    --claret:#8a3b46;
+    --mist:#7d9686;
+    --hairline:rgba(184,146,90,0.28);
+    --shadow:0 10px 30px rgba(0,0,0,0.35);
+    --radius:10px;
+    --font-display:'Cormorant Garamond', Georgia, serif;
+    --font-ui:'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(ellipse at top, rgba(184,146,90,0.06), transparent 60%),
+      var(--ink-deep);
+    color:var(--parchment);
+    font-family:var(--font-ui);
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+  ::selection{ background:rgba(184,146,90,0.35); }
+
+  /* Letterhead header */
+  header.letterhead{
+    flex:0 0 auto;
+    padding:14px 20px 12px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    background:linear-gradient(180deg, var(--ink-panel), rgba(24,41,32,0.4));
+    border-bottom:1px solid var(--hairline);
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:12px;
+  }
+  .crest{
+    width:38px;height:38px;
+    border:1px solid var(--brass);
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:15px;
+    color:var(--brass-bright);
+    letter-spacing:1px;
+    flex-shrink:0;
+    background:radial-gradient(circle at 35% 30%, rgba(220,182,121,0.18), transparent 70%);
+  }
+  .brand-text h1{
+    margin:0;
+    font-family:var(--font-display);
+    font-weight:600;
+    font-size:22px;
+    letter-spacing:0.3px;
+    color:var(--parchment);
+    line-height:1.1;
+  }
+  .brand-text .subtitle{
+    margin:1px 0 0;
+    font-size:11px;
+    letter-spacing:1.6px;
+    text-transform:uppercase;
+    color:var(--mist);
+  }
+  .rule{
+    display:none;
+  }
+  .icon-btn{
+    background:transparent;
+    border:1px solid transparent;
+    color:var(--parchment-dim);
+    width:36px;height:36px;
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+    transition:all .18s ease;
+  }
+  .icon-btn:hover{
+    color:var(--brass-bright);
+    border-color:var(--hairline);
+    background:rgba(184,146,90,0.08);
+  }
+  .icon-btn svg{width:19px;height:19px;}
+
+  /* Chat area */
+  main#chat{
+    flex:1 1 auto;
+    overflow-y:auto;
+    padding:22px 16px 10px;
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+    scroll-behavior:smooth;
+  }
+  main#chat::-webkit-scrollbar{width:8px;}
+  main#chat::-webkit-scrollbar-thumb{background:rgba(184,146,90,0.25); border-radius:8px;}
+
+  .msg-row{
+    display:flex;
+    max-width:860px;
+    width:100%;
+    margin:0 auto;
+    gap:10px;
+    align-items:flex-start;
+  }
+  .msg-row.user{ justify-content:flex-end; }
+  .msg-row.model{ justify-content:flex-start; }
+  .msg-row.system-note{ justify-content:center; }
+
+  .avatar{
+    width:30px;height:30px;
+    border-radius:50%;
+    border:1px solid var(--hairline);
+    flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--font-display);
+    font-size:13px;
+    font-weight:700;
+    color:var(--brass-bright);
+    background:var(--ink-panel-2);
+    margin-top:4px;
+  }
+  .msg-row.user .avatar{ order:2; color:var(--parchment); }
+
+  .bubble{
+    padding:12px 16px;
+    border-radius:var(--radius);
+    line-height:1.55;
+    max-width:78%;
+    word-wrap:break-word;
+    box-shadow:var(--shadow);
+    position:relative;
+  }
+  .msg-row.user .bubble{
+    background:linear-gradient(180deg, #24382c, #1c2e24);
+    border:1px solid var(--hairline);
+    font-family:var(--font-ui);
+    font-size:14.5px;
+    color:var(--parchment);
+    border-top-right-radius:3px;
+  }
+  .msg-row.model .bubble{
+    background:linear-gradient(180deg, rgba(241,232,214,0.05), rgba(241,232,214,0.02));
+    border:1px solid var(--hairline);
+    font-family:var(--font-display);
+    font-size:17.5px;
+    color:var(--parchment);
+    border-top-left-radius:3px;
+  }
+  .msg-row.model .bubble p{ margin:0 0 10px; }
+  .msg-row.model .bubble p:last-child{ margin-bottom:0; }
+  .msg-row.model .bubble ul, .msg-row.model .bubble ol{ margin:0 0 10px; padding-left:22px; }
+  .msg-row.model .bubble a{ color:var(--brass-bright); }
+  .msg-row.model .bubble strong{ color:var(--brass-bright); font-weight:700;}
+  .msg-row.model .bubble blockquote{
+    margin:8px 0; padding:2px 14px;
+    border-left:2px solid var(--brass);
+    color:var(--parchment-dim);
+    font-style:italic;
+  }
+  .msg-row.system-note .bubble{
+    font-family:var(--font-ui);
+    font-size:12.5px;
+    color:var(--mist);
+    background:transparent;
+    box-shadow:none;
+    border:1px dashed var(--hairline);
+    max-width:90%;
+    text-align:center;
+  }
+
+  /* Code blocks */
+  .code-wrap{
+    font-family:var(--font-ui);
+    margin:10px 0;
+    border-radius:8px;
+    overflow:hidden;
+    border:1px solid var(--hairline);
+    background:#0d1712;
+  }
+  .code-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:6px 12px;
+    background:rgba(184,146,90,0.08);
+    border-bottom:1px solid var(--hairline);
+    font-size:11.5px;
+    color:var(--mist);
+    letter-spacing:0.5px;
+    text-transform:uppercase;
+  }
+  .copy-btn{
+    background:transparent;
+    border:1px solid var(--hairline);
+    color:var(--parchment-dim);
+    font-family:var(--font-ui);
+    font-size:11px;
+    padding:3px 9px;
+    border-radius:5px;
+    cursor:pointer;
+    transition:all .15s ease;
+  }
+  .copy-btn:hover{ color:var(--brass-bright); border-color:var(--brass); }
+  .code-wrap pre{
+    margin:0;
+    padding:12px 14px;
+    overflow-x:auto;
+    font-size:13px;
+    line-height:1.5;
+  }
+  .code-wrap code{ font-family:'SF Mono', Consolas, 'Courier New', monospace; }
+  .msg-row.model .bubble code:not(pre code){
+    font-family:'SF Mono', Consolas, monospace;
+    background:rgba(184,146,90,0.14);
+    padding:1px 5px;
+    border-radius:4px;
+    font-size:0.82em;
+    color:var(--brass-bright);
+  }
+
+  .typing{
+    display:inline-flex;
+    gap:4px;
+    align-items:center;
+    padding:2px 4px;
+  }
+  .typing span{
+    width:6px;height:6px;border-radius:50%;
+    background:var(--brass);
+    opacity:0.35;
+    animation:pulse 1.1s infinite ease-in-out;
+  }
+  .typing span:nth-child(2){ animation-delay:0.15s; }
+  .typing span:nth-child(3){ animation-delay:0.3s; }
+  @keyframes pulse{
+    0%,80%,100%{ opacity:0.25; transform:scale(0.85); }
+    40%{ opacity:1; transform:scale(1); }
+  }
+
+  /* Composer */
+  footer#composer{
+    flex:0 0 auto;
+    padding:12px 16px 16px;
+    background:linear-gradient(0deg, var(--ink-panel), rgba(24,41,32,0));
+    border-top:1px solid var(--hairline);
+  }
+  .composer-inner{
+    max-width:860px;
+    margin:0 auto;
+    display:flex;
+    gap:10px;
+    align-items:flex-end;
+    background:var(--ink-panel-2);
+    border:1px solid var(--hairline);
+    border-radius:14px;
+    padding:8px 8px 8px 16px;
+    transition:border-color .2s ease;
+  }
+  .composer-inner:focus-within{ border-color:var(--brass); }
+  textarea#input{
+    flex:1;
+    resize:none;
+    background:transparent;
+    border:none;
+    outline:none;
+    color:var(--parchment);
+    font-family:var(--font-ui);
+    font-size:15px;
+    line-height:1.4;
+    max-height:160px;
+    padding:8px 0;
+  }
+  textarea#input::placeholder{ color:var(--mist); }
+  #send-btn{
+    background:var(--brass);
+    border:none;
+    width:38px;height:38px;
+    border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+    flex-shrink:0;
+    transition:all .15s ease;
+    color:var(--ink-deep);
+  }
+  #send-btn:hover{ background:var(--brass-bright); transform:translateY(-1px); }
+  #send-btn:disabled{ opacity:0.4; cursor:not-allowed; transform:none; }
+  #send-btn svg{ width:17px;height:17px; }
+  .hint{
+    max-width:860px;
+    margin:6px auto 0;
+    font-size:11px;
+    color:var(--mist);
+    text-align:right;
+    padding-right:4px;
+  }
+
+  /* Empty state */
+  .empty-state{
+    margin:auto;
+    text-align:center;
+    max-width:420px;
+    padding:20px;
+  }
+  .empty-state .crest-lg{
+    width:64px;height:64px;
+    border:1px solid var(--brass);
+    border-radius:50%;
+    margin:0 auto 18px;
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:24px;
+    color:var(--brass-bright);
+    background:radial-gradient(circle at 35% 30%, rgba(220,182,121,0.16), transparent 70%);
+  }
+  .empty-state h2{
+    font-family:var(--font-display);
+    font-weight:600;
+    font-size:24px;
+    margin:0 0 8px;
+    color:var(--parchment);
+  }
+  .empty-state p{
+    font-size:13.5px;
+    color:var(--mist);
+    line-height:1.6;
+    margin:0 0 18px;
+  }
+  .empty-state button{
+    background:transparent;
+    border:1px solid var(--brass);
+    color:var(--brass-bright);
+    font-family:var(--font-ui);
+    font-size:13px;
+    padding:9px 18px;
+    border-radius:8px;
+    cursor:pointer;
+    transition:all .15s ease;
+  }
+  .empty-state button:hover{ background:rgba(184,146,90,0.12); }
+
+  /* Modal */
+  .modal-overlay{
+    position:fixed; inset:0;
+    background:rgba(8,14,10,0.72);
+    backdrop-filter:blur(3px);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:100;
+    padding:20px;
+  }
+  .modal-overlay.open{ display:flex; }
+  .modal{
+    background:var(--ink-panel);
+    border:1px solid var(--hairline);
+    border-radius:14px;
+    width:100%;
+    max-width:440px;
+    max-height:88vh;
+    overflow-y:auto;
+    box-shadow:var(--shadow);
+  }
+  .modal-header{
+    padding:20px 22px 14px;
+    border-bottom:1px solid var(--hairline);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .modal-header h2{
+    margin:0;
+    font-family:var(--font-display);
+    font-weight:600;
+    font-size:20px;
+    color:var(--parchment);
+  }
+  .modal-body{ padding:18px 22px 8px; }
+  .field{ margin-bottom:16px; }
+  .field label{
+    display:block;
+    font-size:11.5px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:var(--mist);
+    margin-bottom:7px;
+  }
+  .field input[type=text], .field input[type=password], .field select{
+    width:100%;
+    background:var(--ink-deep);
+    border:1px solid var(--hairline);
+    color:var(--parchment);
+    font-family:var(--font-ui);
+    font-size:14px;
+    padding:10px 12px;
+    border-radius:8px;
+    outline:none;
+    transition:border-color .15s ease;
+  }
+  .field input:focus, .field select:focus{ border-color:var(--brass); }
+  .field select:disabled{ opacity:0.5; }
+  .key-row{ display:flex; gap:8px; }
+  .key-row input{ flex:1; }
+  .key-row button{
+    background:transparent;
+    border:1px solid var(--hairline);
+    color:var(--parchment-dim);
+    border-radius:8px;
+    padding:0 12px;
+    cursor:pointer;
+    font-size:12px;
+  }
+  .key-row button:hover{ border-color:var(--brass); color:var(--brass-bright); }
+  .field-help{ font-size:11.5px; color:var(--mist); margin-top:6px; line-height:1.5; }
+  .field-help a{ color:var(--brass-bright); }
+  .status-msg{
+    font-size:12.5px;
+    padding:9px 12px;
+    border-radius:8px;
+    margin-bottom:14px;
+    display:none;
+  }
+  .status-msg.show{ display:block; }
+  .status-msg.error{ background:rgba(138,59,70,0.18); border:1px solid var(--claret); color:#e6b3ba; }
+  .status-msg.ok{ background:rgba(184,146,90,0.12); border:1px solid var(--brass); color:var(--brass-bright); }
+  .status-msg.loading{ background:rgba(125,150,134,0.1); border:1px solid var(--hairline); color:var(--mist); }
+  .model-badge{
+    display:inline-block;
+    font-size:10px;
+    letter-spacing:0.5px;
+    text-transform:uppercase;
+    color:var(--ink-deep);
+    background:var(--brass-bright);
+    padding:2px 6px;
+    border-radius:4px;
+    margin-left:6px;
+    vertical-align:middle;
+  }
+  .modal-footer{
+    padding:14px 22px 20px;
+    display:flex;
+    gap:10px;
+    border-top:1px solid var(--hairline);
+    margin-top:6px;
+  }
+  .btn-primary, .btn-secondary{
+    flex:1;
+    padding:11px 14px;
+    border-radius:9px;
+    font-family:var(--font-ui);
+    font-size:13.5px;
+    font-weight:600;
+    cursor:pointer;
+    transition:all .15s ease;
+  }
+  .btn-primary{
+    background:var(--brass);
+    border:1px solid var(--brass);
+    color:var(--ink-deep);
+  }
+  .btn-primary:hover{ background:var(--brass-bright); }
+  .btn-secondary{
+    background:transparent;
+    border:1px solid var(--hairline);
+    color:var(--parchment-dim);
+  }
+  .btn-secondary:hover{ border-color:var(--claret); color:#e6b3ba; }
+
+  @media (max-width:600px){
+    header.letterhead{ padding:12px 14px 10px; }
+    .brand-text h1{ font-size:19px; }
+    .bubble{ max-width:88%; font-size:15px; }
+    .msg-row.model .bubble{ font-size:16.5px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="letterhead">
+    <div class="brand">
+    <div class="crest">R·J</div>
+    <div class="brand-text">
+      <h1>Reginald Jeeves</h1>
+      <p class="subtitle" id="usage-dashboard" style="transition: all 0.3s; padding: 2px 6px; border-radius: 4px;">At your continued service</p>
+    </div>
+  </div>
+
+  <button class="icon-btn" id="settings-btn" title="Settings" aria-label="Open settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  </button>
+</header>
+
+<main id="chat"></main>
+
+<footer id="composer">
+  <div class="composer-inner">
+    <textarea id="input" rows="1" placeholder="How may I be of service?"></textarea>
+    <button id="send-btn" title="Send" aria-label="Send message">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+    </button>
+  </div>
+  <p class="hint">Enter to send · Shift+Enter for a new line</p>
+</footer>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Settings</h2>
+      <button class="icon-btn" id="close-modal" aria-label="Close settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div id="status-area"></div>
+
+      <div class="field">
+        <label for="api-key">Google Gemini API Key</label>
+        <div class="key-row">
+          <input type="password" id="api-key" placeholder="AIza...">
+          <button type="button" id="toggle-key">Show</button>
+        </div>
+        <p class="field-help">Stored only in this browser's local storage. Get a key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.</p>
+      </div>
+
+      <div class="field">
+        <label for="honorific">Preferred Honorific</label>
+        <input type="text" id="honorific" placeholder="Sir">
+        <p class="field-help">How Jeeves ought to address you — e.g. "Sir", "Madam", "Master Wooster".</p>
+      </div>
+
+      <div class="field">
+        <label for="model-select">Model</label>
+        <div class="key-row">
+          <select id="model-select" disabled style="flex:1;">
+            <option value="">Enter a valid API key to fetch available models…</option>
+          </select>
+          <button type="button" id="verify-model-btn">Verify</button>
+        </div>
+        <p class="field-help" id="model-help-text">Populated directly from Google's model catalogue. Google's listing doesn't reveal which models are actually usable by your key — click "Verify" to send a minimal test request and confirm.</p>
+        <p class="field-help" id="hidden-models-note" style="display:none;"></p>
+      </div>
+
+      <div class="field">
+        <label>Cost tracking (optional)</label>
+        <p class="field-help" style="margin-top:0;margin-bottom:10px;">Pricing shifts often and varies by model, so Jeeves won't guess it. Enter your own rate from <a href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noopener">Google's live pricing page</a> and Jeeves will total it up per message.</p>
+        <label style="display:flex; align-items:center; gap:8px; text-transform:none; letter-spacing:0; font-size:13px; color:var(--parchment-dim); cursor:pointer; margin-bottom:10px;">
+          <input type="checkbox" id="free-tier-check" style="width:auto;">
+          This model costs me nothing (free tier)
+        </label>
+        <div id="pricing-inputs" style="display:flex; gap:10px;">
+          <div style="flex:1;">
+            <label for="price-input" style="margin-bottom:5px;">$ / 1M input tokens</label>
+            <input type="text" id="price-input" inputmode="decimal" placeholder="e.g. 0.25">
+          </div>
+          <div style="flex:1;">
+            <label for="price-output" style="margin-bottom:5px;">$ / 1M output tokens</label>
+            <input type="text" id="price-output" inputmode="decimal" placeholder="e.g. 1.50">
+          </div>
+        </div>
+        <p class="field-help" id="session-total-note"></p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" id="clear-history-btn">Clear conversation</button>
+      <button class="btn-primary" id="save-settings-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ---------- Config / storage ----------
+  const LS_KEY_API = 'jeeves_api_key';
+  const LS_KEY_HONORIFIC = 'jeeves_honorific';
+  const LS_KEY_MODEL = 'jeeves_model';
+  const LS_KEY_HISTORY = 'jeeves_history';
+  const LS_KEY_BLACKLIST = 'jeeves_unavailable_models';
+  const LS_KEY_PRICING = 'jeeves_pricing'; // { [modelName]: { inputPerM, outputPerM, free } }
+  const LS_KEY_USAGE = 'jeeves_usage_log';
+  const MAX_TURNS_SENT = 24; // messages (not pairs) sent as context to the API
+
+  function updateUsageDashboard() {
+    const now = Date.now();
+    const oneMinAgo = now - 60000;
+    const recentTokens = state.usageLog.filter(e => e.timestamp > oneMinAgo).reduce((sum, e) => sum + e.input + e.output, 0);
+    const dailyRequests = state.usageLog.filter(e => (now - e.timestamp) < 86400000).length;
+    const tokenPercent = (recentTokens / 1000000) * 100;
+    const reqPercent = (dailyRequests / 1500) * 100;
+    const dash = document.getElementById('usage-dashboard');
+    if (!dash) return;
+    dash.textContent = `Usage: ${Math.round(tokenPercent)}% of token limit | ${Math.round(reqPercent)}% of daily limit`;
+    dash.style.background = (tokenPercent > 80 || reqPercent > 80) ? 'rgba(138,59,70,0.4)' : 'transparent';
+  }
+
+  let state = {
+    apiKey: localStorage.getItem(LS_KEY_API) || '',
+    honorific: localStorage.getItem(LS_KEY_HONORIFIC) || 'Sir',
+    model: localStorage.getItem(LS_KEY_MODEL) || '',
+    history: [],
+    fetchedModels: [],
+    blacklist: [],
+    pricing: {},
+    usageLog: JSON.parse(localStorage.getItem(LS_KEY_USAGE)) || [],
+  };
+
+  try {
+    const savedHistory = localStorage.getItem(LS_KEY_HISTORY);
+    if (savedHistory) state.history = JSON.parse(savedHistory);
+  } catch(e){ state.history = []; }
+
+  try {
+    const savedBlacklist = localStorage.getItem(LS_KEY_BLACKLIST);
+    if (savedBlacklist) state.blacklist = JSON.parse(savedBlacklist);
+  } catch(e){ state.blacklist = []; }
+
+  try {
+    const savedPricing = localStorage.getItem(LS_KEY_PRICING);
+    if (savedPricing) state.pricing = JSON.parse(savedPricing);
+  } catch(e){ state.pricing = {}; }
+
+  try {
+    const savedFetched = localStorage.getItem('jeeves_fetched_models');
+    if (savedFetched) state.fetchedModels = JSON.parse(savedFetched);
+  } catch(e){ state.fetchedModels = []; }
+
+  function persistBlacklist(){
+    localStorage.setItem(LS_KEY_BLACKLIST, JSON.stringify(state.blacklist));
+  }
+  function persistPricing(){
+    localStorage.setItem(LS_KEY_PRICING, JSON.stringify(state.pricing));
+  }
+  function shortModelName(fullName){
+    return (fullName || '').replace(/^models\//, '');
+  }
+
+  // ---------- DOM refs ----------
+  const chatEl = document.getElementById('chat');
+  const inputEl = document.getElementById('input');
+  const sendBtn = document.getElementById('send-btn');
+  const settingsBtn = document.getElementById('settings-btn');
+  const closeModalBtn = document.getElementById('close-modal');
+  const modalOverlay = document.getElementById('modal-overlay');
+  const apiKeyInput = document.getElementById('api-key');
+  const toggleKeyBtn = document.getElementById('toggle-key');
+  const honorificInput = document.getElementById('honorific');
+  const modelSelect = document.getElementById('model-select');
+  const saveSettingsBtn = document.getElementById('save-settings-btn');
+  const clearHistoryBtn = document.getElementById('clear-history-btn');
+  const statusArea = document.getElementById('status-area');
+  const verifyModelBtn = document.getElementById('verify-model-btn');
+  const hiddenModelsNote = document.getElementById('hidden-models-note');
+  const freeTierCheck = document.getElementById('free-tier-check');
+  const priceInputEl = document.getElementById('price-input');
+  const priceOutputEl = document.getElementById('price-output');
+  const pricingInputsWrap = document.getElementById('pricing-inputs');
+  const sessionTotalNote = document.getElementById('session-total-note');
+
+  // ---------- Markdown rendering ----------
+  marked.setOptions({ breaks: true, gfm: true });
+
+  function escapeHtml(str){
+    return str.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function renderMarkdownInto(container, rawText){
+    const dirty = marked.parse(rawText || '');
+    const clean = window.DOMPurify ? DOMPurify.sanitize(dirty) : dirty;
+    container.innerHTML = clean;
+
+    // Enhance code blocks: syntax highlight + copy button + language label
+    container.querySelectorAll('pre code').forEach(codeEl => {
+      const pre = codeEl.parentElement;
+      if (pre.parentElement && pre.parentElement.classList.contains('code-wrap')) return;
+
+      let lang = '';
+      const langMatch = (codeEl.className || '').match(/language-(\S+)/);
+      if (langMatch) lang = langMatch[1];
+
+      if (window.hljs) {
+        try { hljs.highlightElement(codeEl); } catch(e){}
+      }
+
+      const wrap = document.createElement('div');
+      wrap.className = 'code-wrap';
+      const head = document.createElement('div');
+      head.className = 'code-head';
+      head.innerHTML = `<span>${escapeHtml(lang || 'code')}</span>`;
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'copy-btn';
+      copyBtn.type = 'button';
+      copyBtn.textContent = 'Copy';
+      copyBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(codeEl.textContent).then(() => {
+          copyBtn.textContent = 'Copied';
+          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1600);
+        }).catch(() => {
+          copyBtn.textContent = 'Failed';
+          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1600);
+        });
+      });
+      head.appendChild(copyBtn);
+
+      pre.parentElement.insertBefore(wrap, pre);
+      wrap.appendChild(head);
+      wrap.appendChild(pre);
+    });
+  }
+
+  // ---------- Chat rendering ----------
+  function scrollToBottom(){
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  function clearChatDom(){
+    chatEl.innerHTML = '';
+  }
+
+  function renderEmptyState(){
+    clearChatDom();
+    const wrap = document.createElement('div');
+    wrap.className = 'empty-state';
+    wrap.innerHTML = `
+      <div class="crest-lg">R·J</div>
+      <h2>Good day.</h2>
+      <p>Reginald Jeeves stands ready, though he requires a Gemini API key before he may attend to your affairs.</p>
+      <button id="empty-settings-btn">Open Settings</button>
+    `;
+    chatEl.appendChild(wrap);
+    document.getElementById('empty-settings-btn').addEventListener('click', openModal);
+  }
+
+  function messageRow(role){
+    const row = document.createElement('div');
+    row.className = 'msg-row ' + role;
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = role === 'user' ? 'Y' : 'J';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    return { row, bubble };
+  }
+
+  function addUserMessage(text){
+    const { row, bubble } = messageRow('user');
+    bubble.textContent = text;
+    chatEl.appendChild(row);
+    scrollToBottom();
+  }
+
+  function addSystemNote(text){
+    const row = document.createElement('div');
+    row.className = 'msg-row system-note';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = text;
+    row.appendChild(bubble);
+    chatEl.appendChild(row);
+    scrollToBottom();
+  }
+
+  function addModelMessagePlaceholder(){
+    const { row, bubble } = messageRow('model');
+    bubble.innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
+    chatEl.appendChild(row);
+    scrollToBottom();
+    return { row, bubble };
+  }
+
+  function buildMetaLine(usage, modelName){
+    if (!usage) return null;
+    const meta = document.createElement('div');
+    meta.style.fontFamily = 'var(--font-ui)';
+    meta.style.fontSize = '11px';
+    meta.style.color = 'var(--mist)';
+    meta.style.marginTop = '8px';
+    meta.style.paddingTop = '7px';
+    meta.style.borderTop = '1px solid var(--hairline)';
+    meta.style.letterSpacing = '0.2px';
+    const inTok = usage.promptTokenCount || 0;
+    const outTok = usage.candidatesTokenCount || 0;
+    const totTok = usage.totalTokenCount || (inTok + outTok);
+    const cost = computeCost(usage, modelName);
+    const costText = cost === null ? 'cost unset' : formatCost(cost);
+    meta.textContent = `${shortModelName(modelName)} · ${inTok}→${outTok} tokens (${totTok} total) · ${costText}`;
+    return meta;
+  }
+
+  function replayHistory(){
+    clearChatDom();
+    if (!state.history.length){
+      if (!state.apiKey) { renderEmptyState(); return; }
+      addSystemNote('Jeeves awaits your instruction.');
+      return;
+    }
+    state.history.forEach(turn => {
+      const text = (turn.parts || []).map(p => p.text || '').join('');
+      if (turn.role === 'user'){
+        addUserMessage(text);
+      } else {
+        const { row, bubble } = messageRow('model');
+        renderMarkdownInto(bubble, text);
+        if (turn.usage) {
+          const meta = buildMetaLine(turn.usage, turn.model);
+          if (meta) bubble.appendChild(meta);
+        }
+        chatEl.appendChild(row);
+      }
+    });
+    scrollToBottom();
+  }
+
+  // ---------- Persona ----------
+  function buildSystemInstruction(){
+    const h = (state.honorific || 'Sir').trim() || 'Sir';
+    return `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}" (or a naturally fitting equivalent, such as "sir" or "madam", if context makes that more appropriate), and you speak with dry British understatement, formal diction, and unfailing courtesy, in the manner of a devoted and quietly brilliant valet.
+
+However, your true purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner, never a hindrance to substance:
+- When asked a factual, technical, or practical question, give a complete, correct, and clearly organised answer.
+- When providing code, commands, file paths, configuration, or any technical content, present it plainly and precisely inside proper markdown code blocks with accurate syntax. Your persona's flourishes, honorifics, and archaisms must NEVER leak into code blocks, variable names, comments, command syntax, or any technical output — those remain entirely clean and directly usable.
+- Keep your Wodehousian voice for the prose surrounding technical content, but never let it compromise clarity or correctness.
+- Be concise where brevity serves the person well, and thorough where the matter warrants it. Do not pad answers with excessive period flourish at the expense of usefulness.`;
+  }
+
+  // ---------- Settings modal ----------
+  function openModal(){
+    apiKeyInput.value = state.apiKey;
+    honorificInput.value = state.honorific;
+    statusArea.innerHTML = '';
+    hiddenModelsNote.style.display = 'none';
+    modalOverlay.classList.add('open');
+    if (state.apiKey) {
+      fetchModels(state.apiKey, state.model);
+    } else {
+      modelSelect.disabled = true;
+      modelSelect.innerHTML = '<option value="">Enter a valid API key to fetch available models…</option>';
+    }
+    if (state.model) loadPricingFieldsForModel(state.model);
+  }
+
+  function closeModal(){
+    modalOverlay.classList.remove('open');
+  }
+
+  function setStatus(kind, text){
+    if (!text){ statusArea.innerHTML = ''; return; }
+    statusArea.innerHTML = `<div class="status-msg ${kind} show">${escapeHtml(text)}</div>`;
+  }
+
+  function loadPricingFieldsForModel(modelName){
+    const entry = state.pricing[modelName];
+    if (entry && entry.free) {
+      freeTierCheck.checked = true;
+      pricingInputsWrap.style.display = 'none';
+    } else {
+      freeTierCheck.checked = false;
+      pricingInputsWrap.style.display = 'flex';
+      priceInputEl.value = entry && entry.inputPerM != null ? entry.inputPerM : '';
+      priceOutputEl.value = entry && entry.outputPerM != null ? entry.outputPerM : '';
+    }
+    updateSessionTotalNote();
+  }
+
+  function computeCost(usage, modelName){
+    if (!usage) return null;
+    const entry = state.pricing[modelName];
+    if (!entry) return null;
+    if (entry.free) return 0;
+    const inRate = parseFloat(entry.inputPerM);
+    const outRate = parseFloat(entry.outputPerM);
+    if (isNaN(inRate) && isNaN(outRate)) return null;
+    const inputTokens = usage.promptTokenCount || 0;
+    const outputTokens = usage.candidatesTokenCount || 0;
+    const cost = (inputTokens / 1e6) * (isNaN(inRate) ? 0 : inRate) + (outputTokens / 1e6) * (isNaN(outRate) ? 0 : outRate);
+    return cost;
+  }
+
+  function formatCost(cost){
+    if (cost === 0) return 'Free tier';
+    if (cost < 0.01) return '~$' + cost.toFixed(4);
+    return '~$' + cost.toFixed(2);
+  }
+
+  function updateSessionTotalNote(){
+    let total = 0;
+    let counted = 0;
+    let missingPricing = false;
+    state.history.forEach(turn => {
+      if (turn.role !== 'model' || !turn.usage) return;
+      const cost = computeCost(turn.usage, turn.model);
+      if (cost === null) { missingPricing = true; return; }
+      total += cost;
+      counted++;
+    });
+    if (counted === 0) {
+      sessionTotalNote.textContent = 'No priced responses yet this session — reply once with pricing set to see a running total.';
+    } else {
+      sessionTotalNote.textContent = `Running total across ${counted} priced response${counted === 1 ? '' : 's'} in your saved history: ${formatCost(total)}` + (missingPricing ? ' (some responses used models without pricing set, and are excluded).' : '.');
+    }
+  }
+
+  async function fetchModels(apiKey, preferredModel){
+    modelSelect.disabled = true;
+    modelSelect.innerHTML = '<option value="">Fetching model catalogue…</option>';
+    setStatus('loading', 'Consulting the Gemini model catalogue…');
+
+    let data;
+    try {
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`);
+      if (!resp.ok) {
+        const errBody = await resp.json().catch(() => ({}));
+        const msg = (errBody && errBody.error && errBody.error.message) || `Request failed with status ${resp.status}`;
+        throw new Error(msg);
+      }
+      data = await resp.json();
+    } catch (err) {
+      modelSelect.innerHTML = '<option value="">Unable to fetch models</option>';
+      modelSelect.disabled = true;
+      setStatus('error', 'I regret to report the model catalogue could not be retrieved: ' + err.message);
+      return;
+    }
+
+    const rawModels = (data && data.models) || [];
+    const allUsable = rawModels.filter(m => {
+      const methods = m.supportedGenerationMethods || [];
+      if (!methods.includes('generateContent')) return false;
+      const name = (m.name || '').toLowerCase();
+      if (name.includes('embedding')) return false;
+      if (name.includes('bison')) return false;
+      if (name.includes('aqa')) return false;
+      if (name.includes('-exp')) return false;
+      if (name.includes('vision')) return false;
+      return true;
+    });
+
+    const usable = allUsable.filter(m => !state.blacklist.includes(m.name));
+    const hiddenCount = allUsable.length - usable.length;
+
+    if (!allUsable.length) {
+      modelSelect.innerHTML = '<option value="">No compatible models found for this key</option>';
+      modelSelect.disabled = true;
+      setStatus('error', 'No models supporting generateContent were found for this key. Please verify the key has the Generative Language API enabled.');
+      return;
+    }
+
+    if (!usable.length) {
+      modelSelect.innerHTML = '<option value="">All fetched models were previously found unavailable</option>';
+      modelSelect.disabled = true;
+      hiddenModelsNote.style.display = 'block';
+      hiddenModelsNote.innerHTML = `All ${hiddenCount} model(s) returned by this key previously failed verification. <a href="#" id="reset-blacklist-link">Reset and show them again</a>.`;
+      document.getElementById('reset-blacklist-link').addEventListener('click', (e) => {
+        e.preventDefault();
+        state.blacklist = [];
+        persistBlacklist();
+        fetchModels(apiKey, preferredModel);
+      });
+      setStatus('error', 'Every model returned for this key has previously failed a live test call.');
+      return;
+    }
+
+    // Sort: recommended flash-lite/flash first, then alphabetically by display name
+    usable.sort((a, b) => {
+      const rank = m => (/flash-lite/i.test(m.name) ? 0 : /flash/i.test(m.name) ? 1 : 2);
+      const r = rank(a) - rank(b);
+      if (r !== 0) return r;
+      return (a.displayName || a.name).localeCompare(b.displayName || b.name);
+    });
+
+    state.fetchedModels = usable;
+    try { localStorage.setItem('jeeves_fetched_models', JSON.stringify(usable)); } catch(e){}
+
+    const recommended = usable.find(m => /flash/i.test(m.name) && !/pro/i.test(m.name)) || usable[0];
+
+    modelSelect.innerHTML = '';
+    usable.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.name; // e.g. "models/gemini-3.1-flash-lite"
+      const isRecommended = m.name === recommended.name;
+      opt.textContent = (m.displayName || m.name) + (isRecommended ? '  ★ Recommended' : '');
+      modelSelect.appendChild(opt);
+    });
+    modelSelect.disabled = false;
+
+    // Selection precedence: previously saved model if still present, else recommended
+    const savedStillValid = preferredModel && usable.some(m => m.name === preferredModel);
+    modelSelect.value = savedStillValid ? preferredModel : recommended.name;
+
+    if (hiddenCount > 0) {
+      hiddenModelsNote.style.display = 'block';
+      hiddenModelsNote.innerHTML = `${hiddenCount} model(s) hidden after failing a previous verification. <a href="#" id="reset-blacklist-link">Reset and show them again</a>.`;
+      document.getElementById('reset-blacklist-link').addEventListener('click', (e) => {
+        e.preventDefault();
+        state.blacklist = [];
+        persistBlacklist();
+        fetchModels(apiKey, preferredModel);
+      });
+    } else {
+      hiddenModelsNote.style.display = 'none';
+      hiddenModelsNote.innerHTML = '';
+    }
+
+    setStatus('ok', `Found ${usable.length} compatible model${usable.length === 1 ? '' : 's'} (${hiddenCount} hidden as previously unavailable). ${recommended.displayName || shortModelName(recommended.name)} is recommended — but names alone don't confirm access, so "Verify" is still worth a click.`);
+    loadPricingFieldsForModel(modelSelect.value);
+  }
+
+  function saveSettings(){
+    const newKey = apiKeyInput.value.trim();
+    const newHonorific = honorificInput.value.trim() || 'Sir';
+    const newModel = modelSelect.value || '';
+
+    if (!newKey) {
+      setStatus('error', 'An API key is required before Jeeves may proceed.');
+      return;
+    }
+    if (!newModel) {
+      setStatus('error', 'Please select a model — fetch the catalogue first if the list is empty.');
+      return;
+    }
+
+    state.apiKey = newKey;
+    state.honorific = newHonorific;
+    state.model = newModel;
+
+    state.pricing[newModel] = {
+      free: freeTierCheck.checked,
+      inputPerM: freeTierCheck.checked ? null : (priceInputEl.value.trim() || null),
+      outputPerM: freeTierCheck.checked ? null : (priceOutputEl.value.trim() || null),
+    };
+
+    localStorage.setItem(LS_KEY_API, state.apiKey);
+    localStorage.setItem(LS_KEY_HONORIFIC, state.honorific);
+    localStorage.setItem(LS_KEY_MODEL, state.model);
+    persistPricing();
+
+    closeModal();
+    replayHistory();
+  }
+
+  async function verifySelectedModel(){
+    const modelName = modelSelect.value;
+    const apiKey = apiKeyInput.value.trim();
+    if (!modelName || !apiKey) {
+      setStatus('error', 'Select a model and ensure a key is entered first.');
+      return;
+    }
+    verifyModelBtn.disabled = true;
+    verifyModelBtn.textContent = 'Checking…';
+    setStatus('loading', `Sending a minimal test request to ${shortModelName(modelName)}…`);
+
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: 'Hi' }] }],
+          generationConfig: { maxOutputTokens: 1 }
+        })
+      });
+      if (!resp.ok) {
+        const errBody = await resp.json().catch(() => ({}));
+        const msg = (errBody && errBody.error && errBody.error.message) || `Request failed with status ${resp.status}`;
+        throw new Error(msg);
+      }
+      setStatus('ok', `Confirmed: ${shortModelName(modelName)} responded successfully to a live test call.`);
+    } catch (err) {
+      const unavailable = /no longer available|not found|does not have access/i.test(err.message);
+      if (unavailable && !state.blacklist.includes(modelName)) {
+        state.blacklist.push(modelName);
+        persistBlacklist();
+      }
+      setStatus('error', `${shortModelName(modelName)} is not usable with this key: ${err.message}` + (unavailable ? ' It has been hidden from the list — reselect from the remaining options.' : ''));
+      if (unavailable) fetchModels(apiKey, state.model);
+    } finally {
+      verifyModelBtn.disabled = false;
+      verifyModelBtn.textContent = 'Verify';
+    }
+  }
+
+  function clearConversation(){
+    state.history = [];
+    localStorage.removeItem(LS_KEY_HISTORY);
+    closeModal();
+    replayHistory();
+  }
+
+  // ---------- Sending messages ----------
+  function persistHistory(){
+    try {
+      localStorage.setItem(LS_KEY_HISTORY, JSON.stringify(state.history));
+    } catch(e){ /* storage full or unavailable; proceed silently */ }
+  }
+
+  function autoResizeInput(){
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + 'px';
+  }
+
+  async function sendMessage(){
+    const text = inputEl.value.trim();
+    if (!text) return;
+
+    if (!state.apiKey || !state.model) {
+      openModal();
+      setStatus('error', 'Jeeves requires an API key and a selected model before he may be of assistance.');
+      return;
+    }
+
+    if (chatEl.querySelector('.empty-state')) clearChatDom();
+
+    inputEl.value = '';
+    autoResizeInput();
+    sendBtn.disabled = true;
+
+    addUserMessage(text);
+    state.history.push({ role: 'user', parts: [{ text }] });
+    persistHistory();
+
+    const usedModel = state.model;
+    const { bubble: modelBubble } = addModelMessagePlaceholder();
+
+    const contextMessages = state.history.slice(-MAX_TURNS_SENT).map(t => ({ role: t.role, parts: t.parts }));
+
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/${usedModel}:streamGenerateContent?alt=sse&key=${encodeURIComponent(state.apiKey)}`;
+      const body = {
+        contents: contextMessages,
+        systemInstruction: { parts: [{ text: buildSystemInstruction() }] },
+        generationConfig: { temperature: 0.85 }
+      };
+
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (!resp.ok || !resp.body) {
+        const errBody = await resp.json().catch(() => ({}));
+        const msg = (errBody && errBody.error && errBody.error.message) || `Request failed with status ${resp.status}`;
+        throw new Error(msg);
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      let fullText = '';
+      let firstChunk = true;
+      let usageMetadata = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep incomplete last line in buffer
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const jsonStr = trimmed.slice(5).trim();
+          if (!jsonStr || jsonStr === '[DONE]') continue;
+
+          let payload;
+          try { payload = JSON.parse(jsonStr); } catch(e){ continue; }
+
+          if (payload.usageMetadata) usageMetadata = payload.usageMetadata;
+
+          const candidate = payload.candidates && payload.candidates[0];
+          if (!candidate) continue;
+
+          if (candidate.finishReason && candidate.finishReason !== 'STOP' && !candidate.content) {
+            throw new Error('Generation halted: ' + candidate.finishReason);
+          }
+
+          const parts = (candidate.content && candidate.content.parts) || [];
+          const chunkText = parts.map(p => p.text || '').join('');
+          if (chunkText) {
+            fullText += chunkText;
+            if (firstChunk) { modelBubble.innerHTML = ''; firstChunk = false; }
+            renderMarkdownInto(modelBubble, fullText);
+            scrollToBottom();
+          }
+        }
+      }
+
+      if (!fullText) {
+        fullText = "I'm afraid a response did not materialise. Perhaps the request might be rephrased, Sir.";
+        renderMarkdownInto(modelBubble, fullText);
+      }
+
+      if (usageMetadata) {
+        state.usageLog.push({ timestamp: Date.now(), input: usageMetadata.promptTokenCount, output: usageMetadata.candidatesTokenCount });
+        localStorage.setItem(LS_KEY_USAGE, JSON.stringify(state.usageLog));
+        updateUsageDashboard();
+      }
+
+      const historyEntry = { role: 'model', parts: [{ text: fullText }], model: usedModel };
+      if (usageMetadata) historyEntry.usage = usageMetadata;
+      state.history.push(historyEntry);
+      persistHistory();
+
+      if (usageMetadata) {
+        const meta = buildMetaLine(usageMetadata, usedModel);
+        if (meta) modelBubble.appendChild(meta);
+      }
+
+    } catch (err) {
+      modelBubble.innerHTML = '';
+      const unavailable = /no longer available|not found|does not have access/i.test(err.message);
+
+      const errDiv = document.createElement('div');
+      errDiv.style.color = '#e6b3ba';
+      errDiv.style.fontFamily = "var(--font-ui)";
+      errDiv.style.fontSize = '13.5px';
+      errDiv.style.marginBottom = unavailable ? '10px' : '0';
+      errDiv.textContent = 'A regrettable difficulty has arisen: ' + err.message;
+      modelBubble.appendChild(errDiv);
+
+      if (unavailable) {
+        if (!state.blacklist.includes(usedModel)) {
+          state.blacklist.push(usedModel);
+          persistBlacklist();
+        }
+        // remove the unsent user turn's pairing note isn't needed; offer a switch instead
+        const alt = (state.fetchedModels || []).find(m => m.name !== usedModel && !state.blacklist.includes(m.name));
+        if (alt) {
+          const switchBtn = document.createElement('button');
+          switchBtn.className = 'copy-btn';
+          switchBtn.type = 'button';
+          switchBtn.textContent = `Switch to ${shortModelName(alt.name)} and retry`;
+          switchBtn.addEventListener('click', () => {
+            state.model = alt.name;
+            localStorage.setItem(LS_KEY_MODEL, state.model);
+            inputEl.value = text;
+            autoResizeInput();
+            state.history.pop(); // remove the user turn we're about to resend
+            persistHistory();
+            const row = modelBubble.closest('.msg-row');
+            if (row) row.remove();
+            const userRows = chatEl.querySelectorAll('.msg-row.user');
+            const lastUserRow = userRows[userRows.length - 1];
+            if (lastUserRow) lastUserRow.remove();
+            sendMessage();
+          });
+          modelBubble.appendChild(switchBtn);
+        } else {
+          const note = document.createElement('div');
+          note.style.fontFamily = 'var(--font-ui)';
+          note.style.fontSize = '12px';
+          note.style.color = 'var(--mist)';
+          note.textContent = 'This model has been hidden from future lists. Open Settings to choose another.';
+          modelBubble.appendChild(note);
+        }
+      }
+    } finally {
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }
+  }
+
+  // ---------- Event wiring ----------
+  settingsBtn.addEventListener('click', openModal);
+  closeModalBtn.addEventListener('click', closeModal);
+  modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
+  saveSettingsBtn.addEventListener('click', saveSettings);
+  clearHistoryBtn.addEventListener('click', clearConversation);
+
+  toggleKeyBtn.addEventListener('click', () => {
+    const isPw = apiKeyInput.type === 'password';
+    apiKeyInput.type = isPw ? 'text' : 'password';
+    toggleKeyBtn.textContent = isPw ? 'Hide' : 'Show';
+  });
+
+  verifyModelBtn.addEventListener('click', verifySelectedModel);
+
+  modelSelect.addEventListener('change', () => {
+    loadPricingFieldsForModel(modelSelect.value);
+  });
+
+  freeTierCheck.addEventListener('change', () => {
+    pricingInputsWrap.style.display = freeTierCheck.checked ? 'none' : 'flex';
+    updateSessionTotalNote();
+  });
+  priceInputEl.addEventListener('input', () => {
+    if (modelSelect.value) {
+      state.pricing[modelSelect.value] = state.pricing[modelSelect.value] || {};
+      state.pricing[modelSelect.value].inputPerM = priceInputEl.value;
+      state.pricing[modelSelect.value].free = false;
+    }
+    updateSessionTotalNote();
+  });
+  priceOutputEl.addEventListener('input', () => {
+    if (modelSelect.value) {
+      state.pricing[modelSelect.value] = state.pricing[modelSelect.value] || {};
+      state.pricing[modelSelect.value].outputPerM = priceOutputEl.value;
+      state.pricing[modelSelect.value].free = false;
+    }
+    updateSessionTotalNote();
+  });
+
+  let fetchDebounce;
+  apiKeyInput.addEventListener('input', () => {
+    clearTimeout(fetchDebounce);
+    const val = apiKeyInput.value.trim();
+    if (!val) {
+      modelSelect.disabled = true;
+      modelSelect.innerHTML = '<option value="">Enter a valid API key to fetch available models…</option>';
+      setStatus('', '');
+      return;
+    }
+    fetchDebounce = setTimeout(() => fetchModels(val, state.model), 600);
+  });
+
+  sendBtn.addEventListener('click', sendMessage);
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+  inputEl.addEventListener('input', autoResizeInput);
+
+  // ---------- Init ----------
+  replayHistory();
+  if (!state.apiKey) {
+    setTimeout(openModal, 300);
+  }
+})();
+</script>
+</body>
+</html>
