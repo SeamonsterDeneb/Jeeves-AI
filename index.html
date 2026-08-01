@@ -3,7 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Reginald Jeeves</title>
+<title>Jeeves</title>
+<link rel="icon" type="image/jpeg" href="Jeeves.png">
+<link rel="apple-touch-icon" href="Jeeves.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#101d17">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -11,6 +17,15 @@
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<!-- Favicon & Touch Icons -->
+<link rel="icon" type="image/png" href="Jeeves.png">
+<link rel="apple-touch-icon" href="Jeeves.png">
+
+<!-- Android Home Screen Meta Tags -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#101d17">
+
 <style>
   :root{
     --ink-deep:#101d17;
@@ -28,7 +43,38 @@
     --font-display:'Cormorant Garamond', Georgia, serif;
     --font-ui:'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   }
+  [data-theme="light"]{
+    --ink-deep:#f5efe2;
+    --ink-panel:#e6dcc8;
+    --ink-panel-2:#ded1b9;
+    --parchment:#1c2820;
+    --parchment-dim:#4a594f;
+    --brass:#8c642d;
+    --brass-bright:#6e4c1d;
+    --mist:#52695c;
+    --hairline:rgba(140,100,45,0.25);
+    --shadow:0 8px 24px rgba(0,0,0,0.08);
+  }
+  [data-theme="light"] body{
+    background:
+      radial-gradient(ellipse at top, rgba(140,100,45,0.08), transparent 60%),
+      var(--ink-deep);
+  }
+  [data-theme="light"] .msg-row.user .bubble{
+    background:linear-gradient(180deg, #42281d, #2b1910);
+    border:1px solid #5c3a29;
+    color:#f5efe2;
+  }
+  [data-theme="light"] .msg-row.model .bubble{
+    background:linear-gradient(180deg, rgba(255,255,255,0.7), rgba(255,255,255,0.4));
+    border:1px solid var(--hairline);
+  }
+  [data-theme="light"] .code-wrap{ background:#1c2620; }
+  [data-theme="light"] .field input[type=text],
+  [data-theme="light"] .field input[type=password],
+  [data-theme="light"] .field select{ background:#fbf8f2; }
   *{box-sizing:border-box;}
+
   html,body{height:100%;}
   body{
     margin:0;
@@ -111,12 +157,14 @@
   main#chat{
     flex:1 1 auto;
     overflow-y:auto;
+    overflow-anchor:none;
     padding:22px 16px 10px;
     display:flex;
     flex-direction:column;
     gap:16px;
     scroll-behavior:smooth;
   }
+
   main#chat::-webkit-scrollbar{width:8px;}
   main#chat::-webkit-scrollbar-thumb{background:rgba(184,146,90,0.25); border-radius:8px;}
 
@@ -132,6 +180,21 @@
   .msg-row.model{ justify-content:flex-start; }
   .msg-row.system-note{ justify-content:center; }
 
+  .crest-img{
+    width:38px;height:38px;
+    border-radius:50%;
+    border:1px solid var(--brass);
+    object-fit:cover;
+    flex-shrink:0;
+  }
+  .avatar-img{
+    width:30px;height:30px;
+    border-radius:50%;
+    border:1px solid var(--hairline);
+    object-fit:cover;
+    flex-shrink:0;
+    margin-top:4px;
+  }
   .avatar{
     width:30px;height:30px;
     border-radius:50%;
@@ -424,7 +487,34 @@
     transition:border-color .15s ease;
   }
   .field input:focus, .field select:focus{ border-color:var(--brass); }
-  .field select:disabled{ opacity:0.5; }
+    .field select:disabled{ opacity:0.5; }
+  .theme-radio-group{
+    display:flex;
+    background:var(--ink-deep);
+    border:1px solid var(--hairline);
+    border-radius:8px;
+    padding:3px;
+    gap:4px;
+  }
+  .theme-radio-group label{
+    flex:1;
+    text-align:center;
+    padding:8px;
+    margin:0;
+    font-size:12.5px;
+    color:var(--parchment-dim);
+    border-radius:6px;
+    cursor:pointer;
+    text-transform:none;
+    letter-spacing:0;
+  }
+  .theme-radio-group input{ display:none; }
+  .theme-radio-group label:has(input:checked){
+    background:var(--brass);
+    color:var(--ink-deep);
+    font-weight:600;
+  }
+
   .key-row{ display:flex; gap:8px; }
   .key-row input{ flex:1; }
   .key-row button{
@@ -504,9 +594,10 @@
 
 <header class="letterhead">
     <div class="brand">
-    <div class="crest">R·J</div>
+    <img src="Jeeves.png" alt="Jeeves" class="crest-img">
     <div class="brand-text">
-      <h1>Reginald Jeeves</h1>
+      <h1>Jeeves</h1>
+
       <p class="subtitle" id="usage-dashboard" style="transition: all 0.3s; padding: 2px 6px; border-radius: 4px;">At your continued service</p>
     </div>
   </div>
@@ -550,7 +641,17 @@
       </div>
 
       <div class="field">
+        <label>Interface Theme</label>
+        <div class="theme-radio-group">
+          <label><input type="radio" name="theme" value="light" checked> Light Parchment (Default)</label>
+          <label><input type="radio" name="theme" value="dark"> Dark Parchment</label>
+        </div>
+      </div>
+
+
+      <div class="field">
         <label for="honorific">Preferred Honorific</label>
+
         <input type="text" id="honorific" placeholder="Sir">
         <p class="field-help">How Jeeves ought to address you — e.g. "Sir", "Madam", "Master Wooster".</p>
       </div>
@@ -601,7 +702,10 @@
   // ---------- Config / storage ----------
   const LS_KEY_API = 'jeeves_api_key';
   const LS_KEY_HONORIFIC = 'jeeves_honorific';
+  const LS_KEY_THEME = 'jeeves_theme';
   const LS_KEY_MODEL = 'jeeves_model';
+
+
   const LS_KEY_HISTORY = 'jeeves_history';
   const LS_KEY_BLACKLIST = 'jeeves_unavailable_models';
   const LS_KEY_PRICING = 'jeeves_pricing'; // { [modelName]: { inputPerM, outputPerM, free } }
@@ -621,16 +725,28 @@
     dash.style.background = (tokenPercent > 80 || reqPercent > 80) ? 'rgba(138,59,70,0.4)' : 'transparent';
   }
 
-  let state = {
+    let state = {
     apiKey: localStorage.getItem(LS_KEY_API) || '',
     honorific: localStorage.getItem(LS_KEY_HONORIFIC) || 'Sir',
+    theme: localStorage.getItem(LS_KEY_THEME) || 'light',
     model: localStorage.getItem(LS_KEY_MODEL) || '',
+
     history: [],
     fetchedModels: [],
     blacklist: [],
     pricing: {},
     usageLog: JSON.parse(localStorage.getItem(LS_KEY_USAGE)) || [],
   };
+
+  function applyTheme(themeName) {
+    if (themeName === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+  }
+  applyTheme(state.theme);
+
 
   try {
     const savedHistory = localStorage.getItem(LS_KEY_HISTORY);
@@ -749,11 +865,12 @@
     const wrap = document.createElement('div');
     wrap.className = 'empty-state';
     wrap.innerHTML = `
-      <div class="crest-lg">R·J</div>
+      <img src="Jeeves.png" alt="Jeeves" class="crest-img" style="width:64px;height:64px;margin:0 auto 18px;">
       <h2>Good day.</h2>
-      <p>Reginald Jeeves stands ready, though he requires a Gemini API key before he may attend to your affairs.</p>
+      <p>Jeeves stands ready, though he requires a Gemini API key before he may attend to your affairs.</p>
       <button id="empty-settings-btn">Open Settings</button>
     `;
+
     chatEl.appendChild(wrap);
     document.getElementById('empty-settings-btn').addEventListener('click', openModal);
   }
@@ -761,10 +878,19 @@
   function messageRow(role){
     const row = document.createElement('div');
     row.className = 'msg-row ' + role;
-    const avatar = document.createElement('div');
-    avatar.className = 'avatar';
-    avatar.textContent = role === 'user' ? 'Y' : 'J';
+    let avatar;
+    if (role === 'model') {
+      avatar = document.createElement('img');
+      avatar.src = 'Jeeves.png';
+      avatar.alt = 'Jeeves';
+      avatar.className = 'avatar-img';
+    } else {
+      avatar = document.createElement('div');
+      avatar.className = 'avatar';
+      avatar.textContent = 'Y';
+    }
     const bubble = document.createElement('div');
+
     bubble.className = 'bubble';
     row.appendChild(avatar);
     row.appendChild(bubble);
@@ -845,18 +971,30 @@
     const h = (state.honorific || 'Sir').trim() || 'Sir';
     return `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}" (or a naturally fitting equivalent, such as "sir" or "madam", if context makes that more appropriate), and you speak with dry British understatement, formal diction, and unfailing courtesy, in the manner of a devoted and quietly brilliant valet.
 
-However, your true purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner, never a hindrance to substance:
-- When asked a factual, technical, or practical question, give a complete, correct, and clearly organised answer.
-- When providing code, commands, file paths, configuration, or any technical content, present it plainly and precisely inside proper markdown code blocks with accurate syntax. Your persona's flourishes, honorifics, and archaisms must NEVER leak into code blocks, variable names, comments, command syntax, or any technical output — those remain entirely clean and directly usable.
-- Keep your Wodehousian voice for the prose surrounding technical content, but never let it compromise clarity or correctness.
-- Be concise where brevity serves the person well, and thorough where the matter warrants it. Do not pad answers with excessive period flourish at the expense of usefulness.`;
+  However, your true purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner, never a hindrance to substance:
+  - When asked a factual, technical, or practical question, give a complete, correct, and clearly organised answer.
+  - When providing code modifications, ALWAYS use small, highly targeted replacements rather than replacing large blocks or whole functions. Format code replacements strictly using this pattern:
+
+  Paste this:
+  [targeted new code]
+  Over this:
+  [existing code]
+
+  - Ensure all code blocks, commands, file paths, configuration, or technical content inside markdown remain entirely clean, syntactically precise, and directly usable, with zero persona flourishes inside code blocks.
+  - Keep your Wodehousian voice for the prose surrounding technical content, but never let it compromise clarity or correctness.
+  - Be concise where brevity serves the person well, and thorough where the matter warrants it. Do not pad answers with excessive period flourish at the expense of usefulness, though you may feel free to occasionally include appropriate quotes for the situation from such classical sources as Shakespeare, Marcus Aurelius, Confucius, and the like.`;
   }
+
 
   // ---------- Settings modal ----------
   function openModal(){
     apiKeyInput.value = state.apiKey;
     honorificInput.value = state.honorific;
+    const currentThemeRadio = document.querySelector(`input[name="theme"][value="${state.theme}"]`);
+    if (currentThemeRadio) currentThemeRadio.checked = true;
     statusArea.innerHTML = '';
+
+
     hiddenModelsNote.style.display = 'none';
     modalOverlay.classList.add('open');
     if (state.apiKey) {
@@ -1036,7 +1174,10 @@ However, your true purpose is to be a genuinely useful, accurate, and efficient 
   function saveSettings(){
     const newKey = apiKeyInput.value.trim();
     const newHonorific = honorificInput.value.trim() || 'Sir';
+    const selectedThemeRadio = document.querySelector('input[name="theme"]:checked');
+    const newTheme = selectedThemeRadio ? selectedThemeRadio.value : 'light';
     const newModel = modelSelect.value || '';
+
 
     if (!newKey) {
       setStatus('error', 'An API key is required before Jeeves may proceed.');
@@ -1049,7 +1190,10 @@ However, your true purpose is to be a genuinely useful, accurate, and efficient 
 
     state.apiKey = newKey;
     state.honorific = newHonorific;
+    state.theme = newTheme;
     state.model = newModel;
+
+    applyTheme(state.theme);
 
     state.pricing[newModel] = {
       free: freeTierCheck.checked,
@@ -1059,7 +1203,9 @@ However, your true purpose is to be a genuinely useful, accurate, and efficient 
 
     localStorage.setItem(LS_KEY_API, state.apiKey);
     localStorage.setItem(LS_KEY_HONORIFIC, state.honorific);
+    localStorage.setItem(LS_KEY_THEME, state.theme);
     localStorage.setItem(LS_KEY_MODEL, state.model);
+
     persistPricing();
 
     closeModal();
@@ -1206,12 +1352,12 @@ However, your true purpose is to be a genuinely useful, accurate, and efficient 
 
           const parts = (candidate.content && candidate.content.parts) || [];
           const chunkText = parts.map(p => p.text || '').join('');
-          if (chunkText) {
+                    if (chunkText) {
             fullText += chunkText;
             if (firstChunk) { modelBubble.innerHTML = ''; firstChunk = false; }
             renderMarkdownInto(modelBubble, fullText);
-            scrollToBottom();
           }
+
         }
       }
 
@@ -1305,7 +1451,13 @@ However, your true purpose is to be a genuinely useful, accurate, and efficient 
 
   verifyModelBtn.addEventListener('click', verifySelectedModel);
 
+  document.querySelectorAll('input[name="theme"]').forEach(radio => {
+    radio.addEventListener('change', (e) => applyTheme(e.target.value));
+  });
+
   modelSelect.addEventListener('change', () => {
+
+
     loadPricingFieldsForModel(modelSelect.value);
   });
 
