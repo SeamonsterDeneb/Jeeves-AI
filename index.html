@@ -582,7 +582,48 @@
   }
   .btn-secondary:hover{ border-color:var(--claret); color:#e6b3ba; }
 
+  /* Image attachment preview */
+  .image-preview-bar{
+    max-width:860px;
+    margin:0 auto 8px;
+    display:none;
+    align-items:center;
+    gap:10px;
+  }
+  .image-preview-bar.show{ display:flex; }
+  .img-thumb-wrap{
+    position:relative;
+    display:inline-block;
+  }
+  .img-thumb-wrap img{
+    height:60px;
+    border-radius:6px;
+    border:1px solid var(--hairline);
+    object-fit:cover;
+  }
+  .img-thumb-remove{
+    position:absolute;
+    top:-6px; right:-6px;
+    background:var(--claret);
+    color:#fff;
+    border:none;
+    border-radius:50%;
+    width:18px; height:18px;
+    font-size:12px;
+    line-height:1;
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .bubble-img{
+    max-width:100%;
+    max-height:300px;
+    border-radius:6px;
+    margin-bottom:8px;
+    display:block;
+  }
+
   @media (max-width:600px){
+
     header.letterhead{ padding:12px 14px 10px; }
     .brand-text h1{ font-size:19px; }
     .bubble{ max-width:88%; font-size:15px; }
@@ -610,9 +651,21 @@
 <main id="chat"></main>
 
 <footer id="composer">
+  <div class="image-preview-bar" id="img-preview-bar">
+    <div class="img-thumb-wrap">
+      <img id="img-preview-src" src="" alt="Pasted preview">
+      <button type="button" class="img-thumb-remove" id="remove-img-btn" title="Remove image">&times;</button>
+    </div>
+  </div>
   <div class="composer-inner">
+
     <textarea id="input" rows="1" placeholder="How may I be of service?"></textarea>
+    <input type="file" id="file-input" accept="image/*" style="display:none;">
+    <button type="button" id="attach-btn" class="icon-btn" title="Attach image" style="width:38px;height:38px;flex-shrink:0;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57a4 4 0 1 1 5.66 5.66l-8.59 8.58a2 2 0 0 1-2.83-2.83l7.88-7.88"/></svg>
+    </button>
     <button id="send-btn" title="Send" aria-label="Send message">
+
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
     </button>
   </div>
@@ -799,6 +852,71 @@
   const priceOutputEl = document.getElementById('price-output');
   const pricingInputsWrap = document.getElementById('pricing-inputs');
   const sessionTotalNote = document.getElementById('session-total-note');
+  const imgPreviewBar = document.getElementById('img-preview-bar');
+  const imgPreviewSrc = document.getElementById('img-preview-src');
+  const removeImgBtn = document.getElementById('remove-img-btn');
+  const attachBtn = document.getElementById('attach-btn');
+  const fileInput = document.getElementById('file-input');
+
+  let pendingImage = null; // { mimeType: string, base64Data: string, dataUrl: string }
+
+  function clearPendingImage(){
+    pendingImage = null;
+    imgPreviewSrc.src = '';
+    imgPreviewBar.classList.remove('show');
+    if (fileInput) fileInput.value = '';
+  }
+
+  function handleImageFile(file){
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target.result;
+      const base64Data = dataUrl.split(',')[1];
+      pendingImage = { mimeType: file.type, base64Data, dataUrl };
+      imgPreviewSrc.src = dataUrl;
+      imgPreviewBar.classList.add('show');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // Paste handler
+  document.addEventListener('paste', (e) => {
+    const clipboardData = e.clipboardData || (e.originalEvent && e.originalEvent.clipboardData);
+    if (!clipboardData || !clipboardData.items) return;
+    for (const item of clipboardData.items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        handleImageFile(file);
+        break;
+      }
+    }
+  });
+
+  // Drag and drop handler
+  document.addEventListener('dragover', (e) => e.preventDefault());
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const files = e.dataTransfer && e.dataTransfer.files;
+    if (files && files.length > 0) {
+      handleImageFile(files[0]);
+    }
+  });
+
+  // Attachment button handlers
+  if (attachBtn && fileInput) {
+    attachBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        handleImageFile(e.target.files[0]);
+      }
+    });
+  }
+
+  if (removeImgBtn) removeImgBtn.addEventListener('click', clearPendingImage);
+
+
 
   // ---------- Markdown rendering ----------
   marked.setOptions({ breaks: true, gfm: true });
@@ -897,12 +1015,23 @@
     return { row, bubble };
   }
 
-  function addUserMessage(text){
+  function addUserMessage(text, imageDataUrl){
     const { row, bubble } = messageRow('user');
-    bubble.textContent = text;
+    if (imageDataUrl) {
+      const img = document.createElement('img');
+      img.src = imageDataUrl;
+      img.className = 'bubble-img';
+      bubble.appendChild(img);
+    }
+    if (text) {
+      const txtSpan = document.createElement('span');
+      txtSpan.textContent = text;
+      bubble.appendChild(txtSpan);
+    }
     chatEl.appendChild(row);
     scrollToBottom();
   }
+
 
   function addSystemNote(text){
     const row = document.createElement('div');
@@ -950,10 +1079,16 @@
       return;
     }
     state.history.forEach(turn => {
-      const text = (turn.parts || []).map(p => p.text || '').join('');
+      const textPart = (turn.parts || []).find(p => p.text);
+      const imagePart = (turn.parts || []).find(p => p.inlineData || p.inline_data);
+      const text = textPart ? textPart.text : '';
+      const imgData = imagePart ? (imagePart.inlineData || imagePart.inline_data) : null;
+      const imgUrl = imgData ? `data:${imgData.mimeType || imgData.mime_type};base64,${imgData.data}` : null;
+
       if (turn.role === 'user'){
-        addUserMessage(text);
+        addUserMessage(text, imgUrl);
       } else {
+
         const { row, bubble } = messageRow('model');
         renderMarkdownInto(bubble, text);
         if (turn.usage) {
@@ -1274,7 +1409,7 @@
 
   async function sendMessage(){
     const text = inputEl.value.trim();
-    if (!text) return;
+    if (!text && !pendingImage) return;
 
     if (!state.apiKey || !state.model) {
       openModal();
@@ -1284,13 +1419,31 @@
 
     if (chatEl.querySelector('.empty-state')) clearChatDom();
 
+    const currentImg = pendingImage;
+    clearPendingImage();
+
     inputEl.value = '';
     autoResizeInput();
     sendBtn.disabled = true;
 
-    addUserMessage(text);
-    state.history.push({ role: 'user', parts: [{ text }] });
+    addUserMessage(text, currentImg ? currentImg.dataUrl : null);
+
+    const userParts = [];
+    if (currentImg) {
+      userParts.push({
+        inlineData: {
+          mimeType: currentImg.mimeType,
+          data: currentImg.base64Data
+        }
+      });
+    }
+    if (text) {
+      userParts.push({ text });
+    }
+
+    state.history.push({ role: 'user', parts: userParts });
     persistHistory();
+
 
     const usedModel = state.model;
     const { bubble: modelBubble } = addModelMessagePlaceholder();
