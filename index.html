@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
 <title>Jeeves</title>
 <link rel="icon" type="image/jpeg" href="Jeeves.png">
 <link rel="apple-touch-icon" href="Jeeves.png">
@@ -151,6 +151,17 @@
     border-color:var(--hairline);
     background:rgba(184,146,90,0.08);
   }
+  .icon-btn.listening{
+    color: #e65c5c;
+    border-color: #e65c5c;
+    animation: pulse-mic 1.5s infinite;
+  }
+  @keyframes pulse-mic {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+  }
+
   .icon-btn svg{width:19px;height:19px;}
 
   /* Chat area */
@@ -290,7 +301,7 @@
     transition:all .15s ease;
   }
   .copy-btn:hover{ 
-    color:var(--brass); border-color:var(--brass); }
+    color:#fff; border-color:#and fff; }
   .code-wrap pre{
     margin:0;
     padding:12px 14px;
@@ -662,19 +673,21 @@
     </div>
   </div>
   <div class="composer-inner">
-
+    <button type="button" id="mic-btn" class="icon-btn" title="Voice input" aria-label="Voice input" style="width:38px;height:38px;flex-shrink:0;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+    </button>
     <textarea id="input" rows="1" placeholder="How may I be of service?"></textarea>
     <input type="file" id="file-input" style="display:none;">
     <button type="button" id="attach-btn" class="icon-btn" title="Attach image" style="width:38px;height:38px;flex-shrink:0;">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57a4 4 0 1 1 5.66 5.66l-8.59 8.58a2 2 0 0 1-2.83-2.83l7.88-7.88"/></svg>
     </button>
     <button id="send-btn" title="Send" aria-label="Send message">
-
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
     </button>
   </div>
   <p class="hint">Enter to send · Shift+Enter for a new line</p>
 </footer>
+
 
 <!-- Settings Modal -->
 <div class="modal-overlay" id="modal-overlay">
@@ -861,38 +874,72 @@
   const removeImgBtn = document.getElementById('remove-img-btn');
   const attachBtn = document.getElementById('attach-btn');
   const fileInput = document.getElementById('file-input');
+  const micBtn = document.getElementById('mic-btn');
 
-  let pendingImage = null; // { mimeType: string, base64Data: string, dataUrl: string }
+  
+
+  let pendingAttachment = null; // { type: 'image'|'text', ... }
 
   function clearPendingImage(){
-    pendingImage = null;
+    pendingAttachment = null;
     imgPreviewSrc.src = '';
+    imgPreviewSrc.style.display = 'block';
+    const fileLabel = document.getElementById('file-preview-label');
+    if (fileLabel) fileLabel.remove();
     imgPreviewBar.classList.remove('show');
     if (fileInput) fileInput.value = '';
   }
 
-  function handleImageFile(file){
-    if (!file || !file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target.result;
-      const base64Data = dataUrl.split(',')[1];
-      pendingImage = { mimeType: file.type, base64Data, dataUrl };
-      imgPreviewSrc.src = dataUrl;
-      imgPreviewBar.classList.add('show');
-    };
-    reader.readAsDataURL(file);
+  function handleFile(file){
+    if (!file) return;
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target.result;
+        const base64Data = dataUrl.split(',')[1];
+        pendingAttachment = { type: 'image', mimeType: file.type, base64Data, dataUrl };
+        imgPreviewSrc.src = dataUrl;
+        imgPreviewSrc.style.display = 'block';
+        const fileLabel = document.getElementById('file-preview-label');
+        if (fileLabel) fileLabel.remove();
+        imgPreviewBar.classList.add('show');
+      };
+      reader.readAsDataURL(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const textContent = e.target.result;
+        pendingAttachment = { type: 'text', fileName: file.name, textContent };
+        imgPreviewSrc.style.display = 'none';
+        let fileLabel = document.getElementById('file-preview-label');
+        if (!fileLabel) {
+          fileLabel = document.createElement('span');
+          fileLabel.id = 'file-preview-label';
+          fileLabel.style.fontSize = '12px';
+          fileLabel.style.color = 'var(--parchment)';
+          fileLabel.style.padding = '6px 10px';
+          fileLabel.style.background = 'var(--ink-panel-2)';
+          fileLabel.style.border = '1px solid var(--hairline)';
+          fileLabel.style.borderRadius = '6px';
+          imgPreviewSrc.parentElement.insertBefore(fileLabel, imgPreviewSrc);
+        }
+        fileLabel.textContent = `📄 ${file.name}`;
+        imgPreviewBar.classList.add('show');
+      };
+      reader.readAsText(file);
+    }
   }
+
 
   // Paste handler
   document.addEventListener('paste', (e) => {
     const clipboardData = e.clipboardData || (e.originalEvent && e.originalEvent.clipboardData);
     if (!clipboardData || !clipboardData.items) return;
     for (const item of clipboardData.items) {
-      if (item.type.startsWith('image/')) {
+      if (item.kind === 'file') {
         e.preventDefault();
         const file = item.getAsFile();
-        handleImageFile(file);
+        handleFile(file);
         break;
       }
     }
@@ -904,7 +951,7 @@
     e.preventDefault();
     const files = e.dataTransfer && e.dataTransfer.files;
     if (files && files.length > 0) {
-      handleImageFile(files[0]);
+      handleFile(files[0]);
     }
   });
 
@@ -912,7 +959,7 @@
   attachBtn.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', (e) => {
     if (e.target.files && e.target.files[0]) {
-      handleImageFile(e.target.files[0]);
+      handleFile(e.target.files[0]);
     }
   });
 
@@ -1422,7 +1469,7 @@
 
   async function sendMessage(){
     const text = inputEl.value.trim();
-    if (!text && !pendingImage) return;
+    if (!text && !pendingAttachment) return;
 
     if (!state.apiKey || !state.model) {
       openModal();
@@ -1432,23 +1479,34 @@
 
     if (chatEl.querySelector('.empty-state')) clearChatDom();
 
-    const currentImg = pendingImage;
+    const currentAttachment = pendingAttachment;
     clearPendingImage();
 
     inputEl.value = '';
     autoResizeInput();
     sendBtn.disabled = true;
 
-    addUserMessage(text, currentImg ? currentImg.dataUrl : null);
+    const displayImgUrl = (currentAttachment && currentAttachment.type === 'image') ? currentAttachment.dataUrl : null;
+    const displayText = (currentAttachment && currentAttachment.type === 'text')
+      ? (text ? `${text}\n\n[Attached File: ${currentAttachment.fileName}]` : `[Attached File: ${currentAttachment.fileName}]`)
+      : text;
+
+    addUserMessage(displayText, displayImgUrl);
 
     const userParts = [];
-    if (currentImg) {
-      userParts.push({
-        inlineData: {
-          mimeType: currentImg.mimeType,
-          data: currentImg.base64Data
-        }
-      });
+    if (currentAttachment) {
+      if (currentAttachment.type === 'image') {
+        userParts.push({
+          inlineData: {
+            mimeType: currentAttachment.mimeType,
+            data: currentAttachment.base64Data
+          }
+        });
+      } else if (currentAttachment.type === 'text') {
+        userParts.push({
+          text: `File attached (${currentAttachment.fileName}):\n\`\`\`\n${currentAttachment.textContent}\n\`\`\``
+        });
+      }
     }
     if (text) {
       userParts.push({ text });
@@ -1602,7 +1660,57 @@
     }
   }
 
+  // ---------- Speech Recognition ----------
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SpeechRecognition && micBtn) {
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = navigator.language || 'en-US';
+
+    let baseText = '';
+
+    micBtn.addEventListener('click', () => {
+      if (micBtn.classList.contains('listening')) {
+        recognition.stop();
+      } else {
+        baseText = inputEl.value ? (inputEl.value.trim() + ' ') : '';
+        try {
+          recognition.start();
+        } catch(err) {
+          console.error('Speech recognition failed to start:', err);
+        }
+      }
+    });
+
+    recognition.onstart = () => {
+      micBtn.classList.add('listening');
+    };
+
+    recognition.onend = () => {
+      micBtn.classList.remove('listening');
+    };
+
+    recognition.onresult = (event) => {
+      let currentTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        currentTranscript += event.results[i][0].transcript;
+      }
+      inputEl.value = baseText + currentTranscript;
+      autoResizeInput();
+      inputEl.focus();
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      micBtn.classList.remove('listening');
+    };
+  } else if (micBtn) {
+    micBtn.style.display = 'none';
+  }
+
   // ---------- Event wiring ----------
+
   settingsBtn.addEventListener('click', openModal);
   closeModalBtn.addEventListener('click', closeModal);
   modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
