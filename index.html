@@ -274,14 +274,14 @@
     background:rgba(184,146,90,0.08);
     border-bottom:1px solid var(--hairline);
     font-size:11.5px;
-    color:var(--mist);
+    color:#B1BCB6;
     letter-spacing:0.5px;
     text-transform:uppercase;
   }
   .copy-btn{
     background:transparent;
-    border:1px solid var(--hairline);
-    color:var(--parchment-dim);
+    border:1px solid #C9B79D;
+    color:#C9B79D;
     font-family:var(--font-ui);
     font-size:11px;
     padding:3px 9px;
@@ -289,7 +289,8 @@
     cursor:pointer;
     transition:all .15s ease;
   }
-  .copy-btn:hover{ color:var(--brass-bright); border-color:var(--brass); }
+  .copy-btn:hover{ 
+    color:var(--brass); border-color:var(--brass); }
   .code-wrap pre{
     margin:0;
     padding:12px 14px;
@@ -305,6 +306,9 @@
     border-radius:4px;
     font-size:0.82em;
     color:var(--brass-bright);
+  }
+  .code-wrap .hljs .hljs-attribute {
+    color: #9BBDDE
   }
 
   .typing{
@@ -1043,13 +1047,23 @@
     scrollToBottom();
   }
 
-  function addModelMessagePlaceholder(){
+    function addModelMessagePlaceholder(){
     const { row, bubble } = messageRow('model');
-    bubble.innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
+    const stallingPhrases = [
+      "Allow me to consider that, Sir.",
+      "Let me ponder the particulars of your request for a moment.",
+      "One moment, Sir; let me turn that over in my mind.",
+      "I shall examine the matter forthwith, Sir.",
+      "If you would be so kind as to wait a moment, I am looking into that.",
+      "Just a brief pause, Sir, while I arrange my thoughts."
+    ];
+    const phrase = stallingPhrases[Math.floor(Math.random() * stallingPhrases.length)];
+    bubble.innerHTML = `<span style="font-family:var(--font-ui); font-size:14px; color:var(--mist);">${phrase}</span>`;
     chatEl.appendChild(row);
     scrollToBottom();
     return { row, bubble };
   }
+
 
   function buildMetaLine(usage, modelName){
     if (!usage) return null;
