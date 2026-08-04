@@ -660,7 +660,7 @@
   <div class="composer-inner">
 
     <textarea id="input" rows="1" placeholder="How may I be of service?"></textarea>
-    <input type="file" id="file-input" accept="image/*" style="display:none;">
+    <input type="file" id="file-input" style="display:none;">
     <button type="button" id="attach-btn" class="icon-btn" title="Attach image" style="width:38px;height:38px;flex-shrink:0;">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57a4 4 0 1 1 5.66 5.66l-8.59 8.58a2 2 0 0 1-2.83-2.83l7.88-7.88"/></svg>
     </button>
@@ -905,14 +905,13 @@
   });
 
   // Attachment button handlers
-  if (attachBtn && fileInput) {
-    attachBtn.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', (e) => {
-      if (e.target.files && e.target.files[0]) {
-        handleImageFile(e.target.files[0]);
-      }
-    });
-  }
+  attachBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) {
+      handleImageFile(e.target.files[0]);
+    }
+  });
+
 
   if (removeImgBtn) removeImgBtn.addEventListener('click', clearPendingImage);
 
