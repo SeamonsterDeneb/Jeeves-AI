@@ -677,7 +677,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
     </button>
     <textarea id="input" rows="1" placeholder="How may I be of service?"></textarea>
-    <input type="file" id="file-input" style="display:none;">
+    <input type="file" id="file-input" style="display:none;" multiple>
     <button type="button" id="attach-btn" class="icon-btn" title="Attach image" style="width:38px;height:38px;flex-shrink:0;">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57a4 4 0 1 1 5.66 5.66l-8.59 8.58a2 2 0 0 1-2.83-2.83l7.88-7.88"/></svg>
     </button>
@@ -878,57 +878,35 @@
 
   
 
-  let pendingAttachment = null; // { type: 'image'|'text', ... }
+  let pendingAttachments = [];
 
-  function clearPendingImage(){
-    pendingAttachment = null;
-    imgPreviewSrc.src = '';
-    imgPreviewSrc.style.display = 'block';
-    const fileLabel = document.getElementById('file-preview-label');
-    if (fileLabel) fileLabel.remove();
+  function clearPendingImages(){
+    pendingAttachments = [];
+    imgPreviewBar.innerHTML = '';
     imgPreviewBar.classList.remove('show');
     if (fileInput) fileInput.value = '';
   }
 
+
   function handleFile(file){
     if (!file) return;
-    if (file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target.result;
-        const base64Data = dataUrl.split(',')[1];
-        pendingAttachment = { type: 'image', mimeType: file.type, base64Data, dataUrl };
-        imgPreviewSrc.src = dataUrl;
-        imgPreviewSrc.style.display = 'block';
-        const fileLabel = document.getElementById('file-preview-label');
-        if (fileLabel) fileLabel.remove();
-        imgPreviewBar.classList.add('show');
-      };
-      reader.readAsDataURL(file);
-    } else {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const textContent = e.target.result;
-        pendingAttachment = { type: 'text', fileName: file.name, textContent };
-        imgPreviewSrc.style.display = 'none';
-        let fileLabel = document.getElementById('file-preview-label');
-        if (!fileLabel) {
-          fileLabel = document.createElement('span');
-          fileLabel.id = 'file-preview-label';
-          fileLabel.style.fontSize = '12px';
-          fileLabel.style.color = 'var(--parchment)';
-          fileLabel.style.padding = '6px 10px';
-          fileLabel.style.background = 'var(--ink-panel-2)';
-          fileLabel.style.border = '1px solid var(--hairline)';
-          fileLabel.style.borderRadius = '6px';
-          imgPreviewSrc.parentElement.insertBefore(fileLabel, imgPreviewSrc);
-        }
-        fileLabel.textContent = `📄 ${file.name}`;
-        imgPreviewBar.classList.add('show');
-      };
-      reader.readAsText(file);
-    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const id = Date.now();
+      const attachment = file.type.startsWith('image/') 
+        ? { id, type: 'image', mimeType: file.type, base64Data: e.target.result.split(',')[1], dataUrl: e.target.result }
+        : { id, type: 'text', fileName: file.name, textContent: e.target.result };
+      pendingAttachments.push(attachment);
+      const thumb = document.createElement('div');
+      thumb.className = 'img-thumb-wrap';
+      thumb.innerHTML = (attachment.type === 'image' ? `<img src="${attachment.dataUrl}" style="height:60px;border-radius:6px;border:1px solid var(--hairline);">` : `<span style="font-size:12px;padding:6px;background:var(--ink-panel-2);border:1px solid var(--hairline);border-radius:6px;">📄 ${attachment.fileName}</span>`) + `<button type="button" class="img-thumb-remove">&times;</button>`;
+      thumb.querySelector('button').onclick = () => { pendingAttachments = pendingAttachments.filter(a => a.id !== id); thumb.remove(); if (!pendingAttachments.length) imgPreviewBar.classList.remove('show'); };
+      imgPreviewBar.appendChild(thumb);
+      imgPreviewBar.classList.add('show');
+    };
+    file.type.startsWith('image/') ? reader.readAsDataURL(file) : reader.readAsText(file);
   }
+
 
 
   // Paste handler
@@ -958,15 +936,14 @@
   // Attachment button handlers
   attachBtn.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', (e) => {
-    if (e.target.files && e.target.files[0]) {
-      handleFile(e.target.files[0]);
+    if (e.target.files) {
+      for(let i = 0; i < e.target.files.length; i++) {
+        handleFile(e.target.files[i]);
+      }
     }
   });
 
-
-  if (removeImgBtn) removeImgBtn.addEventListener('click', clearPendingImage);
-
-
+  if (removeImgBtn) removeImgBtn.addEventListener('click', clearPendingImages);
 
   // ---------- Markdown rendering ----------
   marked.setOptions({ breaks: true, gfm: true });
@@ -1177,7 +1154,8 @@
 
   - Ensure all code blocks, commands, file paths, configuration, or technical content inside markdown remain entirely clean, syntactically precise, and directly usable, with zero persona flourishes inside code blocks.
   - Keep your Wodehousian voice for the prose surrounding technical content, but never let it compromise clarity or correctness.
-  - Be concise where brevity serves the person well, and thorough where the matter warrants it. Do not pad answers with excessive period flourish at the expense of usefulness, though you may feel free to occasionally include appropriate quotes for the situation from such classical sources as Shakespeare, Marcus Aurelius, Confucius, and the like.`;
+  - Be concise where brevity serves the person well, and thorough where the matter warrants it. Do not pad answers with excessive period flourish at the expense of usefulness, though you may feel free to occasionally include appropriate quotes for the situation from such classical sources as Shakespeare, Marcus Aurelius, Confucius, and the like. 
+  - When you quote from great literature, include a link to an electronic version of the text. Additionally, provide a 'Find-in-Page' suggestion: a unique 3-to-5 word phrase from the quote's context, presented in a format that is easily copyable so the user may search for it upon opening the link.`;
   }
 
 
@@ -1479,38 +1457,23 @@
 
     if (chatEl.querySelector('.empty-state')) clearChatDom();
 
-    const currentAttachment = pendingAttachment;
-    clearPendingImage();
+    const currentAttachments = [...pendingAttachments];
+    clearPendingImages();
 
     inputEl.value = '';
     autoResizeInput();
     sendBtn.disabled = true;
 
-    const displayImgUrl = (currentAttachment && currentAttachment.type === 'image') ? currentAttachment.dataUrl : null;
-    const displayText = (currentAttachment && currentAttachment.type === 'text')
-      ? (text ? `${text}\n\n[Attached File: ${currentAttachment.fileName}]` : `[Attached File: ${currentAttachment.fileName}]`)
-      : text;
-
-    addUserMessage(displayText, displayImgUrl);
-
     const userParts = [];
-    if (currentAttachment) {
-      if (currentAttachment.type === 'image') {
-        userParts.push({
-          inlineData: {
-            mimeType: currentAttachment.mimeType,
-            data: currentAttachment.base64Data
-          }
-        });
-      } else if (currentAttachment.type === 'text') {
-        userParts.push({
-          text: `File attached (${currentAttachment.fileName}):\n\`\`\`\n${currentAttachment.textContent}\n\`\`\``
-        });
+    currentAttachments.forEach(att => {
+      if (att.type === 'image') {
+        userParts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } });
+      } else {
+        userParts.push({ text: `File attached (${att.fileName}):\n\`\`\`\n${att.textContent}\n\`\`\`` });
       }
-    }
-    if (text) {
-      userParts.push({ text });
-    }
+    });
+    if (text) userParts.push({ text });
+
 
     state.history.push({ role: 'user', parts: userParts });
     persistHistory();
@@ -1576,12 +1539,21 @@
 
           const parts = (candidate.content && candidate.content.parts) || [];
           const chunkText = parts.map(p => p.text || '').join('');
-                    if (chunkText) {
+          if (chunkText) {
             fullText += chunkText;
-            if (firstChunk) { modelBubble.innerHTML = ''; firstChunk = false; }
-            renderMarkdownInto(modelBubble, fullText);
+            if (firstChunk) {
+              modelBubble.innerHTML = '';
+              firstChunk = false;
+              modelBubble.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            // Rapidly inject code blocks, gently stream prose
+            if (fullText.includes('```')) {
+              renderMarkdownInto(modelBubble, fullText);
+            } else {
+              await new Promise(r => setTimeout(r, 120 / (450 / 60))); // ~450 wpm
+              renderMarkdownInto(modelBubble, fullText);
+            }
           }
-
         }
       }
 
