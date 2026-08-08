@@ -9,6 +9,14 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#101d17">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/base16/eighties.min.css">
+<script src="js/marked.min.js"></script>
+<script src="js/purify.min.js"></script>
+<script src="js/highlight.min.js"></script>
+
 
 
 <style>
@@ -1039,14 +1047,18 @@
   if (removeImgBtn) removeImgBtn.addEventListener('click', clearPendingImages);
 
   // ---------- Markdown rendering ----------
-  marked.setOptions({ breaks: true, gfm: true });
+  if (typeof marked !== 'undefined') {
+    marked.setOptions({ breaks: true, gfm: true });
+  }
+
 
     function escapeHtml(str){
     return str.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
   function renderMarkdownInto(container, rawText){
-    const dirty = marked.parse(rawText || '');
+    const parser = (typeof marked !== 'undefined') ? marked : { parse: (t) => t };
+    const dirty = parser.parse(rawText || '');
     const clean = window.DOMPurify ? DOMPurify.sanitize(dirty) : dirty;
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = clean;
