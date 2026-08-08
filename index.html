@@ -4,27 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
 <title>Jeeves</title>
-<link rel="icon" type="image/jpeg" href="Jeeves.png">
-<link rel="apple-touch-icon" href="Jeeves.png">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#101d17">
-
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/base16/eighties.min.css">
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-<!-- Favicon & Touch Icons -->
 <link rel="icon" type="image/png" href="Jeeves.png">
 <link rel="apple-touch-icon" href="Jeeves.png">
-
-<!-- Android Home Screen Meta Tags -->
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#101d17">
+
 
 <style>
   :root{
@@ -301,7 +286,7 @@
     transition:all .15s ease;
   }
   .copy-btn:hover{ 
-    color:#fff; border-color:#and fff; }
+    color:#fff; border-color:#fff; }
   .code-wrap pre{
     margin:0;
     padding:12px 14px;
@@ -442,6 +427,73 @@
     transition:all .15s ease;
   }
   .empty-state button:hover{ background:rgba(184,146,90,0.12); }
+
+  /* Conversation archive panel */
+  #archive-overlay{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:var(--ink-deep);
+    z-index:90;
+    flex-direction:column;
+    padding:18px 16px;
+  }
+  #archive-overlay.open{ display:flex; }
+  .archive-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    max-width:860px;
+    width:100%;
+    margin:0 auto 14px;
+  }
+  .archive-header h2{
+    margin:0;
+    font-family:var(--font-display);
+    font-weight:600;
+    font-size:20px;
+    color:var(--parchment);
+  }
+  .archive-list{
+    max-width:860px;
+    width:100%;
+    margin:0 auto;
+    overflow-y:auto;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .archive-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    background:var(--ink-panel-2);
+    border:1px solid var(--hairline);
+    border-radius:10px;
+    padding:8px 10px;
+  }
+  .archive-input{
+    flex:1;
+    background:transparent;
+    border:none;
+    outline:none;
+    color:var(--parchment);
+    font-family:var(--font-ui);
+    font-size:14px;
+    padding:6px 4px;
+  }
+  .archive-btn{
+    background:var(--brass);
+    border:none;
+    color:var(--ink-deep);
+    padding:8px 16px;
+    border-radius:8px;
+    cursor:pointer;
+    font-weight:600;
+    font-size:13px;
+    flex-shrink:0;
+  }
+  .archive-btn:hover{ background:var(--brass-bright); }
 
   /* Modal */
   .modal-overlay{
@@ -636,11 +688,6 @@
     margin-bottom:8px;
     display:block;
   }
-  .external-link::after {
-  content: ' ↗';
-  font-size: 0.8em;
-}
-
 
   @media (max-width:600px){
 
@@ -649,41 +696,31 @@
     .bubble{ max-width:88%; font-size:15px; }
     .msg-row.model .bubble{ font-size:16.5px; }
   }
-
-    /* Slide-up Archives */
-  #archive-overlay { position:absolute; bottom:0; left:0; width:100%; height:80%; background:var(--ink-deep); transform:translateY(100%); transition:transform 0.3s ease-out; z-index:10; border-top:1px solid var(--brass); overflow-y:auto; }
-  #archive-overlay.open { transform:translateY(0); }
-  .archive-header { display:flex; justify-content:space-between; padding:20px; align-items:center; }
-  .archive-row{ display:flex; gap:10px; margin-bottom:10px; align-items:center; }
-  .archive-input{ flex:1; background:var(--ink-panel-2); border:1px solid var(--hairline); color:var(--parchment); padding:8px 12px; border-radius:8px; font-family:var(--font-ui); }
-  .archive-input:focus{ border-color:var(--brass); outline:none; }
-  .archive-btn{ background:var(--brass); border:none; color:var(--ink-deep); padding:8px 16px; border-radius:8px; cursor:pointer; font-weight:600; font-size:13px; }
-  .archive-btn:hover{ background:var(--brass-bright); }
-
 </style>
 </head>
 <body>
 
 <header class="letterhead">
-  <div class="brand">
+    <div class="brand">
     <img src="Jeeves.png" alt="Jeeves" class="crest-img">
     <div class="brand-text">
       <h1>Jeeves</h1>
+
       <p class="subtitle" id="usage-dashboard" style="transition: all 0.3s; padding: 2px 6px; border-radius: 4px;">At your continued service</p>
     </div>
   </div>
+
   <button class="icon-btn" id="settings-btn" title="Settings" aria-label="Open settings">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
   </button>
 </header>
 
-<main id="chat" style="position:relative;">
-  <div id="archive-overlay">
-    <div class="archive-header"><h2>Conversations</h2><button class="icon-btn" id="close-archives">✕</button></div>
-    <div id="archive-content" class="archive-list"></div>
-  </div>
-</main>
+<main id="chat"></main>
 
+<div id="archive-overlay">
+  <div class="archive-header"><h2>Conversations</h2><button class="icon-btn" id="close-archives">✕</button></div>
+  <div id="archive-content" class="archive-list"></div>
+</div>
 
 <footer id="composer">
   <div class="image-preview-bar" id="img-preview-bar">
@@ -693,14 +730,16 @@
     </div>
   </div>
   <div class="composer-inner">
-    <button type="button" id="new-chat-btn" class="icon-btn" title="New Chat" style="width:38px;height:38px;flex-shrink:0;">
+    <button type="button" id="new-chat-btn" class="icon-btn" title="New Chat" aria-label="Start a new conversation" style="width:38px;height:38px;flex-shrink:0;">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
     </button>
-    <button type="button" id="archive-btn" class="icon-btn" title="Archives" style="width:38px;height:38px;flex-shrink:0;">
+    <button type="button" id="archive-btn" class="icon-btn" title="Conversations" aria-label="Browse past conversations" style="width:38px;height:38px;flex-shrink:0;">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/></svg>
     </button>
+    <button type="button" id="mic-btn" class="icon-btn" title="Voice input" aria-label="Voice input" style="width:38px;height:38px;flex-shrink:0;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+    </button>
     <textarea id="input" rows="1" placeholder="How may I be of service?"></textarea>
-
     <input type="file" id="file-input" style="display:none;" multiple>
     <button type="button" id="attach-btn" class="icon-btn" title="Attach image" style="width:38px;height:38px;flex-shrink:0;">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57a4 4 0 1 1 5.66 5.66l-8.59 8.58a2 2 0 0 1-2.83-2.83l7.88-7.88"/></svg>
@@ -804,6 +843,8 @@
   const LS_KEY_BLACKLIST = 'jeeves_unavailable_models';
   const LS_KEY_PRICING = 'jeeves_pricing'; // { [modelName]: { inputPerM, outputPerM, free } }
   const LS_KEY_USAGE = 'jeeves_usage_log';
+  const LS_KEY_CONVERSATIONS = 'jeeves_archives';
+  const LS_KEY_ACTIVE = 'jeeves_active_id';
   const MAX_TURNS_SENT = 24; // messages (not pairs) sent as context to the API
 
   function updateUsageDashboard() {
@@ -819,16 +860,15 @@
     dash.style.background = (tokenPercent > 80 || reqPercent > 80) ? 'rgba(138,59,70,0.4)' : 'transparent';
   }
 
-  const LS_KEY_CONVERSATIONS = 'jeeves_archives';
-  let state = {
+    let state = {
     apiKey: localStorage.getItem(LS_KEY_API) || '',
     honorific: localStorage.getItem(LS_KEY_HONORIFIC) || 'Sir',
     theme: localStorage.getItem(LS_KEY_THEME) || 'light',
     model: localStorage.getItem(LS_KEY_MODEL) || '',
-    history: [],
-    conversations: JSON.parse(localStorage.getItem(LS_KEY_CONVERSATIONS)) || [{ id: 'default', title: 'Main Conversation', history: [] }],
-    activeId: 'default',
 
+    history: [],
+    conversations: [],
+    activeId: localStorage.getItem(LS_KEY_ACTIVE) || 'default',
     fetchedModels: [],
     blacklist: [],
     pricing: {},
@@ -846,9 +886,35 @@
 
 
   try {
-    const savedHistory = localStorage.getItem(LS_KEY_HISTORY);
-    if (savedHistory) state.history = JSON.parse(savedHistory);
-  } catch(e){ state.history = []; }
+    const savedConversations = localStorage.getItem(LS_KEY_CONVERSATIONS);
+    if (savedConversations) {
+      state.conversations = JSON.parse(savedConversations);
+    } else {
+      // First time loading conversations: migrate any pre-existing single-conversation
+      // history (from before the archive feature existed) into a "Main Conversation".
+      let migratedHistory = [];
+      try {
+        const savedHistory = localStorage.getItem(LS_KEY_HISTORY);
+        if (savedHistory) migratedHistory = JSON.parse(savedHistory);
+      } catch(e){ /* ignore malformed legacy history */ }
+      state.conversations = [{ id: 'default', title: 'Main Conversation', history: migratedHistory }];
+    }
+    if (!state.conversations.length) {
+      state.conversations = [{ id: 'default', title: 'Main Conversation', history: [] }];
+    }
+  } catch(e){
+    state.conversations = [{ id: 'default', title: 'Main Conversation', history: [] }];
+  }
+
+  {
+    const activeConvo = state.conversations.find(c => c.id === state.activeId);
+    if (activeConvo) {
+      state.history = activeConvo.history || [];
+    } else {
+      state.activeId = state.conversations[0].id;
+      state.history = state.conversations[0].history || [];
+    }
+  }
 
   try {
     const savedBlacklist = localStorage.getItem(LS_KEY_BLACKLIST);
@@ -901,46 +967,19 @@
   const removeImgBtn = document.getElementById('remove-img-btn');
   const attachBtn = document.getElementById('attach-btn');
   const fileInput = document.getElementById('file-input');
-  const micBtn = null;
-
+  const micBtn = document.getElementById('mic-btn');
 
   
 
   let pendingAttachments = [];
 
-  function startNewChat() {
-    const id = Date.now().toString();
-    state.conversations.push({ id, title: 'New Conversation', history: [] });
-    state.activeId = id;
-    state.history = [];
-    persistHistory();
-    replayHistory();
-  }
-
-  function renameConversation(id, newTitle) {
-    const convo = state.conversations.find(c => c.id === id);
-    if (convo) {
-      convo.title = newTitle;
-      localStorage.setItem(LS_KEY_CONVERSATIONS, JSON.stringify(state.conversations));
-      renderArchives();
-    }
-  }
-
-  const archiveOverlay = document.getElementById('archive-overlay');
-  const archiveContent = document.getElementById('archive-content');
-  
-  
-
-  document.getElementById('close-archives').addEventListener('click', () => archiveOverlay.classList.remove('open'));
-
-
-
-
   function clearPendingImages(){
     pendingAttachments = [];
     imgPreviewBar.innerHTML = '';
     imgPreviewBar.classList.remove('show');
+    if (fileInput) fileInput.value = '';
   }
+
 
   function handleFile(file){
     if (!file) return;
@@ -1019,12 +1058,6 @@
         <code style="color:var(--brass-bright);">${term}</code>
         <button class="copy-btn" style="padding:0 4px; margin-left:6px;" onclick="navigator.clipboard.writeText('${term}')">Copy Term</button>
       </span>`;
-    });
-    tempDiv.querySelectorAll('a').forEach(a => {
-      a.setAttribute('target', '_blank');
-      a.setAttribute('rel', 'noopener noreferrer');
-      a.classList.add('external-link');
-      a.setAttribute('aria-label', 'opens in a new tab');
     });
     container.innerHTML = tempDiv.innerHTML;
 
@@ -1498,7 +1531,7 @@
 
   function clearConversation(){
     state.history = [];
-    localStorage.removeItem(LS_KEY_HISTORY);
+    persistHistory();
     closeModal();
     replayHistory();
   }
@@ -1508,8 +1541,9 @@
     const idx = state.conversations.findIndex(c => c.id === state.activeId);
     if (idx !== -1) {
       state.conversations[idx].history = state.history;
-      localStorage.setItem(LS_KEY_CONVERSATIONS, JSON.stringify(state.conversations));
+      try { localStorage.setItem(LS_KEY_CONVERSATIONS, JSON.stringify(state.conversations)); } catch(e){}
     }
+    try { localStorage.setItem(LS_KEY_ACTIVE, state.activeId); } catch(e){}
   }
 
   function autoResizeInput(){
@@ -1519,7 +1553,7 @@
 
   async function sendMessage(){
     const text = inputEl.value.trim();
-    if (!text && !pendingAttachment) return;
+    if (!text && pendingAttachments.length === 0) return;
 
     if (!state.apiKey || !state.model) {
       openModal();
@@ -1753,7 +1787,39 @@
     micBtn.style.display = 'none';
   }
 
-  function renderArchives() {
+  // ---------- Conversation switcher ----------
+  const archiveOverlay = document.getElementById('archive-overlay');
+  const archiveContent = document.getElementById('archive-content');
+  const closeArchivesBtn = document.getElementById('close-archives');
+
+  function startNewChat(){
+    const id = Date.now().toString();
+    state.conversations.push({ id, title: 'New Conversation', history: [] });
+    state.activeId = id;
+    state.history = [];
+    persistHistory();
+    replayHistory();
+  }
+
+  function renameConversation(id, newTitle){
+    const convo = state.conversations.find(c => c.id === id);
+    if (convo && newTitle.trim()) {
+      convo.title = newTitle.trim();
+      try { localStorage.setItem(LS_KEY_CONVERSATIONS, JSON.stringify(state.conversations)); } catch(e){}
+    }
+  }
+
+  function switchToConversation(id){
+    const convo = state.conversations.find(c => c.id === id);
+    if (!convo) return;
+    state.activeId = id;
+    state.history = convo.history || [];
+    persistHistory();
+    replayHistory();
+    archiveOverlay.classList.remove('open');
+  }
+
+  function renderArchives(){
     archiveContent.innerHTML = '';
     state.conversations.forEach(c => {
       const row = document.createElement('div');
@@ -1764,8 +1830,9 @@
       input.onblur = (e) => renameConversation(c.id, e.target.value);
       const btn = document.createElement('button');
       btn.className = 'archive-btn';
-      btn.textContent = 'Open';
-      btn.onclick = () => { state.activeId = c.id; state.history = c.history; replayHistory(); archiveOverlay.classList.remove('open'); };
+      btn.type = 'button';
+      btn.textContent = c.id === state.activeId ? 'Current' : 'Open';
+      btn.addEventListener('click', () => switchToConversation(c.id));
       row.appendChild(input);
       row.appendChild(btn);
       archiveContent.appendChild(row);
@@ -1773,13 +1840,17 @@
     archiveOverlay.classList.add('open');
   }
 
-  // ---------- Event wiring ----------
-
   document.getElementById('new-chat-btn').addEventListener('click', startNewChat);
   document.getElementById('archive-btn').addEventListener('click', renderArchives);
+  closeArchivesBtn.addEventListener('click', () => archiveOverlay.classList.remove('open'));
+
+  // ---------- Event wiring ----------
+
+  settingsBtn.addEventListener('click', openModal);
   closeModalBtn.addEventListener('click', closeModal);
-
-
+  modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
+  saveSettingsBtn.addEventListener('click', saveSettings);
+  clearHistoryBtn.addEventListener('click', clearConversation);
 
   toggleKeyBtn.addEventListener('click', () => {
     const isPw = apiKeyInput.type === 'password';
