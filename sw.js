@@ -1,3 +1,3 @@
-fetchself.addEventListener('fetch', (event) => {
-  return;
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
 });

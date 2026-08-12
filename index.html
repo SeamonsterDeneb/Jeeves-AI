@@ -703,6 +703,14 @@
     margin-bottom:8px;
     display:block;
   }
+  .msg-row.user .bubble{
+  background:linear-gradient(180deg, #24382c, #1c2e24);
+  border:1px solid var(--hairline);
+  font-family:var(--font-ui);
+  font-size:14.5px;
+  color:var(--parchment);
+  border-top-right-radius:3px;
+}
 
   @media (max-width:600px){
 
@@ -932,6 +940,23 @@
       state.history = state.conversations[0].history || [];
     }
   }
+
+  async function generateTitle(history) {
+    const context = history.slice(0, 3).map(turn => turn.parts.map(p => p.text).join(' ')).join(' ').substring(0, 500);
+    const url = `https://generativelanguage.googleapis.com/v1beta/${state.model}:generateContent?key=${encodeURIComponent(state.apiKey)}`;
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: `Summarize the following into a title of 3-5 words: "${context}"` }] }]
+        })
+      });
+      const data = await resp.json();
+      return data.candidates[0].content.parts[0].text.replace(/["']/g, '').trim();
+    } catch(e) { return 'New Conversation'; }
+  }
+
 
   try {
     const savedBlacklist = localStorage.getItem(LS_KEY_BLACKLIST);
@@ -1250,7 +1275,6 @@
       if (turn.role === 'user'){
         addUserMessage(text, imgUrl);
       } else {
-
         const { row, bubble } = messageRow('model');
         renderMarkdownInto(bubble, text);
         if (turn.usage) {
@@ -1813,7 +1837,12 @@
   const archiveContent = document.getElementById('archive-content');
   const closeArchivesBtn = document.getElementById('close-archives');
 
-  function startNewChat(){
+  async function startNewChat(){
+    if (state.history.length > 0 && state.activeId !== 'default') {
+      const title = await generateTitle(state.history);
+      const convo = state.conversations.find(c => c.id === state.activeId);
+      if (convo) convo.title = title;
+    }
     const id = Date.now().toString();
     state.conversations.push({ id, title: 'New Conversation', history: [] });
     state.activeId = id;
@@ -1821,6 +1850,7 @@
     persistHistory();
     replayHistory();
   }
+
 
   function renameConversation(id, newTitle){
     const convo = state.conversations.find(c => c.id === id);
