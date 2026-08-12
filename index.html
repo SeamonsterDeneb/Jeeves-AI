@@ -345,15 +345,20 @@
     max-width:860px;
     margin:0 auto;
     display:flex;
-    gap:10px;
-    align-items:flex-end;
+    flex-direction:column;
+    gap:6px;
     background:var(--ink-panel-2);
     border:1px solid var(--hairline);
     border-radius:14px;
-    padding:8px 8px 8px 16px;
+    padding:10px 12px;
     transition:border-color .2s ease;
   }
   .composer-inner:focus-within{ border-color:var(--brass); }
+  .composer-actions{
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
   textarea#input{
     flex:1;
     resize:none;
@@ -738,23 +743,25 @@
     </div>
   </div>
   <div class="composer-inner">
-    <button type="button" id="new-chat-btn" class="icon-btn" title="New Chat" aria-label="Start a new conversation" style="width:38px;height:38px;flex-shrink:0;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-    </button>
-    <button type="button" id="archive-btn" class="icon-btn" title="Conversations" aria-label="Browse past conversations" style="width:38px;height:38px;flex-shrink:0;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/></svg>
-    </button>
-    <button type="button" id="mic-btn" class="icon-btn" title="Voice input" aria-label="Voice input" style="width:38px;height:38px;flex-shrink:0;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
-    </button>
     <textarea id="input" rows="1" placeholder="How may I be of service?"></textarea>
     <input type="file" id="file-input" style="display:none;" multiple>
-    <button type="button" id="attach-btn" class="icon-btn" title="Attach image" style="width:38px;height:38px;flex-shrink:0;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57a4 4 0 1 1 5.66 5.66l-8.59 8.58a2 2 0 0 1-2.83-2.83l7.88-7.88"/></svg>
-    </button>
-    <button id="send-btn" title="Send" aria-label="Send message">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
-    </button>
+    <div class="composer-actions">
+      <button type="button" id="new-chat-btn" class="icon-btn" title="New Chat" aria-label="Start a new conversation" style="width:38px;height:38px;flex-shrink:0;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button type="button" id="archive-btn" class="icon-btn" title="Conversations" aria-label="Browse past conversations" style="width:38px;height:38px;flex-shrink:0;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/></svg>
+      </button>
+      <button type="button" id="mic-btn" class="icon-btn" title="Voice input" aria-label="Voice input" style="width:38px;height:38px;flex-shrink:0;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+      </button>
+      <button type="button" id="attach-btn" class="icon-btn" title="Attach image" style="width:38px;height:38px;flex-shrink:0;margin-left:auto;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57a4 4 0 1 1 5.66 5.66l-8.59 8.58a2 2 0 0 1-2.83-2.83l7.88-7.88"/></svg>
+      </button>
+      <button id="send-btn" title="Send" aria-label="Send message">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+      </button>
+    </div>
   </div>
   <p class="hint">Enter to send · Shift+Enter for a new line</p>
 </footer>
