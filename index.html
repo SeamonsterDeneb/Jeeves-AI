@@ -16,6 +16,8 @@
 <script src="js/marked.min.js"></script>
 <script src="js/purify.min.js"></script>
 <script src="js/highlight.min.js"></script>
+<link rel="manifest" href="manifest.json">
+
 
 
 
@@ -1939,5 +1941,9 @@
   }
 })();
 </script>
+<script>
+  navigator.serviceWorker.register('sw.js');
+</script>
+
 </body>
 </html>
