@@ -741,7 +741,12 @@
 <main id="chat"></main>
 
 <div id="archive-overlay">
-  <div class="archive-header"><h2>Conversations</h2><button class="icon-btn" id="close-archives">✕</button></div>
+  <div class="archive-header">
+    <h2>Conversations</h2>
+    <input type="text" id="search-archives" placeholder="Search..." style="background:var(--ink-panel-2); border:1px solid var(--hairline); border-radius:6px; color:var(--parchment); padding:4px 8px; font-size:13px; width:120px;">
+    <button class="icon-btn" id="close-archives">✕</button>
+  </div>
+
   <div id="archive-content" class="archive-list"></div>
 </div>
 
@@ -1875,23 +1880,31 @@
     state.conversations.forEach(c => {
       const row = document.createElement('div');
       row.className = 'archive-row';
-      const input = document.createElement('input');
-      input.className = 'archive-input';
-      input.value = c.title;
-      input.onblur = (e) => renameConversation(c.id, e.target.value);
-      const btn = document.createElement('button');
-      btn.className = 'archive-btn';
-      btn.type = 'button';
-      btn.textContent = c.id === state.activeId ? 'Current' : 'Open';
-      btn.addEventListener('click', () => switchToConversation(c.id));
-      row.appendChild(input);
-      row.appendChild(btn);
+      row.dataset.id = c.id;
+      row.innerHTML = `
+        <input type="text" class="archive-input" value="${escapeHtml(c.title)}">
+        <button class="archive-btn" type="button">${c.id === state.activeId ? 'Current' : 'Open'}</button>
+      `;
+      row.querySelector('.archive-input').onblur = (e) => renameConversation(c.id, e.target.value);
+      row.querySelector('.archive-btn').addEventListener('click', () => switchToConversation(c.id));
       archiveContent.appendChild(row);
     });
     archiveOverlay.classList.add('open');
   }
 
-  document.getElementById('new-chat-btn').addEventListener('click', startNewChat);
+
+  document.getElementById('search-archives').addEventListener('input', (e) => {
+    const term = e.target.value.toLowerCase();
+    document.querySelectorAll('.archive-row').forEach(row => {
+      const convo = state.conversations.find(c => c.id === row.dataset.id);
+      if (!convo) return;
+      const content = JSON.stringify(convo.history || []).toLowerCase();
+      row.style.display = (content.includes(term) || convo.title.toLowerCase().includes(term)) ? 'flex' : 'none';
+    });
+  });
+
+
+
   document.getElementById('archive-btn').addEventListener('click', renderArchives);
   closeArchivesBtn.addEventListener('click', () => archiveOverlay.classList.remove('open'));
 
