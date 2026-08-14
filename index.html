@@ -1238,9 +1238,34 @@
     scrollToBottom();
   }
 
-    function addModelMessagePlaceholder(){
+    function getJeevesVoice() {
+    const voices = speechSynthesis.getVoices();
+    return voices.find(v => v.lang.startsWith('en-GB') && v.name.includes('Google')) 
+        || voices.find(v => v.lang.startsWith('en-GB'))
+        || voices.find(v => v.name.includes('Daniel'))
+        || voices[0];
+  }
+
+  function speak(text) {
+    if (!('speechSynthesis' in window)) return;
+    
+    // Remove markdown asterisks and hash symbols for a cleaner reading
+    const cleanText = text.replace(/(\*\*|__|\*|_|#)/g, '');
+    
+    const u = new SpeechSynthesisUtterance(cleanText);
+    const voice = getJeevesVoice();
+    if (voice) u.voice = voice;
+    
+    u.rate = 1.0;
+    u.pitch = 0.9;
+    speechSynthesis.speak(u);
+  }
+
+
+
+  function addModelMessagePlaceholder(){
     const { row, bubble } = messageRow('model');
-    const stallingPhrases = [
+    const phrases = [
       "Allow me to consider that, Sir.",
       "Let me ponder the particulars of your request for a moment.",
       "One moment, Sir; let me turn that over in my mind.",
@@ -1248,13 +1273,12 @@
       "If you would be so kind as to wait a moment, I am looking into that.",
       "Just a brief pause, Sir, while I arrange my thoughts."
     ];
-    const phrase = stallingPhrases[Math.floor(Math.random() * stallingPhrases.length)];
-    bubble.innerHTML = `<span style="font-family:var(--font-ui); font-size:14px; color:var(--mist);">${phrase}</span>`;
+    const phrase = phrases[Math.floor(Math.random() * phrases.length)];
+    bubble.innerHTML = `<span style="font-family:var(--font-ui); font-size:14px; color:var(--mist);">${phrase}</span>`;    
     chatEl.appendChild(row);
     scrollToBottom();
     return { row, bubble };
   }
-
 
   function buildMetaLine(usage, modelName){
     if (!usage) return null;
@@ -1678,7 +1702,9 @@
       const reader = resp.body.getReader();
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
+      
       let fullText = '';
+      let lastSpoken = '';
       let firstChunk = true;
       let usageMetadata = null;
 
@@ -1688,7 +1714,7 @@
         buffer += decoder.decode(value, { stream: true });
 
         const lines = buffer.split('\n');
-        buffer = lines.pop(); // keep incomplete last line in buffer
+        buffer = lines.pop();
 
         for (const line of lines) {
           const trimmed = line.trim();
@@ -1698,15 +1724,10 @@
 
           let payload;
           try { payload = JSON.parse(jsonStr); } catch(e){ continue; }
-
           if (payload.usageMetadata) usageMetadata = payload.usageMetadata;
 
           const candidate = payload.candidates && payload.candidates[0];
           if (!candidate) continue;
-
-          if (candidate.finishReason && candidate.finishReason !== 'STOP' && !candidate.content) {
-            throw new Error('Generation halted: ' + candidate.finishReason);
-          }
 
           const parts = (candidate.content && candidate.content.parts) || [];
           const chunkText = parts.map(p => p.text || '').join('');
@@ -1715,20 +1736,18 @@
             if (firstChunk) {
               modelBubble.innerHTML = '';
               firstChunk = false;
-              modelBubble.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
-            // Rapidly inject code blocks, gently stream prose
-            if (fullText.includes('```')) {
-              renderMarkdownInto(modelBubble, fullText);
-            } else {
-              await new Promise(r => setTimeout(r, 120 / (450 / 60))); // ~450 wpm
-              renderMarkdownInto(modelBubble, fullText);
-            }
+            renderMarkdownInto(modelBubble, fullText);
           }
         }
       }
 
+      // Speak the final result
+      let finalSpeech = fullText.replace(/```[\s\S]*?```/g, " Please see the code block on screen, Sir. ");
+      speak(finalSpeech);
+
       if (!fullText) {
+
         fullText = "I'm afraid a response did not materialise. Perhaps the request might be rephrased, Sir.";
         renderMarkdownInto(modelBubble, fullText);
       }
@@ -1750,16 +1769,16 @@
       }
 
     } catch (err) {
-      modelBubble.innerHTML = '';
-      const unavailable = /no longer available|not found|does not have access/i.test(err.message);
-
       const errDiv = document.createElement('div');
       errDiv.style.color = '#e6b3ba';
-      errDiv.style.fontFamily = "var(--font-ui)";
-      errDiv.style.fontSize = '13.5px';
-      errDiv.style.marginBottom = unavailable ? '10px' : '0';
+      errDiv.style.marginTop = '10px';
+      errDiv.style.paddingTop = '10px';
+      errDiv.style.borderTop = '1px solid var(--claret)';
       errDiv.textContent = 'A regrettable difficulty has arisen: ' + err.message;
       modelBubble.appendChild(errDiv);
+      
+      const unavailable = /no longer available|not found|does not have access/i.test(err.message);
+
 
       if (unavailable) {
         if (!state.blacklist.includes(usedModel)) {
