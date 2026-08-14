@@ -1102,51 +1102,63 @@
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = clean;
 
-    const refRegex = /\[\[REF\s+(\w+)\]\]/g;
-    tempDiv.innerHTML = tempDiv.innerHTML.replace(refRegex, (match, term) => {
+    // Legacy cleanup: silently strip any old-format [[REF term]] tags that may
+    // still be sitting in previously-saved conversation history.
+    const legacyRefRegex = /\[\[REF\s+(\w+)\]\]/g;
+    tempDiv.innerHTML = tempDiv.innerHTML.replace(legacyRefRegex, '');
 
-      return `<span class="ref-wrap" style="background:var(--ink-panel-2); padding:2px 4px; border-radius:4px; border:1px solid var(--brass);">
-        <code style="color:var(--brass-bright);">${term}</code>
-        <button class="copy-btn" style="padding:0 4px; margin-left:6px;" onclick="navigator.clipboard.writeText('${term}')">Copy Term</button>
-      </span>`;
+    // Quote-linking: [[QUOTE "text"|Author]] becomes a clickable link to a
+    // Google search for the quote + author, so it's easy to verify or explore further.
+    const quoteRegex = /\[\[QUOTE\s+"([^"]*)"\s*\|\s*([^\]]+)\]\]/g;
+    tempDiv.innerHTML = tempDiv.innerHTML.replace(quoteRegex, (match, quoteText, author) => {
+      const cleanAuthor = author.trim();
+      const searchQuery = encodeURIComponent(`"${quoteText}" ${cleanAuthor} quote`);
+      const url = `https://www.google.com/search?q=${searchQuery}`;
+      return `<a href="${url}" target="_blank" rel="noopener" style="color:var(--brass-bright); text-decoration:underline dotted; text-underline-offset:2px;">&ldquo;${escapeHtml(quoteText)}&rdquo;</a> <span style="font-size:0.85em; color:var(--mist);">&mdash; ${escapeHtml(cleanAuthor)}</span>`;
     });
+
     container.innerHTML = tempDiv.innerHTML;
 
     container.querySelectorAll('pre code').forEach(codeEl => {
       const pre = codeEl.parentElement;
-      if (pre.parentElement && pre.parentElement.classList.contains('code-wrap')) return;
+      if (!pre || !pre.parentNode) return;
+      if (pre.parentNode.classList && pre.parentNode.classList.contains('code-wrap')) return;
 
-      let lang = '';
-      const langMatch = (codeEl.className || '').match(/language-(\S+)/);
-      if (langMatch) lang = langMatch[1];
+      try {
+        let lang = '';
+        const langMatch = (codeEl.className || '').match(/language-(\S+)/);
+        if (langMatch) lang = langMatch[1];
 
-      if (window.hljs) {
-        try { hljs.highlightElement(codeEl); } catch(e){}
-      }
+        if (window.hljs) {
+          try { hljs.highlightElement(codeEl); } catch(e){}
+        }
 
-      const wrap = document.createElement('div');
-      wrap.className = 'code-wrap';
-      const head = document.createElement('div');
-      head.className = 'code-head';
-      head.innerHTML = `<span>${escapeHtml(lang || 'code')}</span>`;
-      const copyBtn = document.createElement('button');
-      copyBtn.className = 'copy-btn';
-      copyBtn.type = 'button';
-      copyBtn.textContent = 'Copy';
-      copyBtn.addEventListener('click', () => {
-        navigator.clipboard.writeText(codeEl.textContent).then(() => {
-          copyBtn.textContent = 'Copied';
-          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1600);
-        }).catch(() => {
-          copyBtn.textContent = 'Failed';
-          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1600);
+        const wrap = document.createElement('div');
+        wrap.className = 'code-wrap';
+        const head = document.createElement('div');
+        head.className = 'code-head';
+        head.innerHTML = `<span>${escapeHtml(lang || 'code')}</span>`;
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'copy-btn';
+        copyBtn.type = 'button';
+        copyBtn.textContent = 'Copy';
+        copyBtn.addEventListener('click', () => {
+          navigator.clipboard.writeText(codeEl.textContent).then(() => {
+            copyBtn.textContent = 'Copied';
+            setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1600);
+          }).catch(() => {
+            copyBtn.textContent = 'Failed';
+            setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1600);
+          });
         });
-      });
-      head.appendChild(copyBtn);
+        head.appendChild(copyBtn);
 
-      pre.parentElement.insertBefore(wrap, pre);
-      wrap.appendChild(head);
-      wrap.appendChild(pre);
+        pre.parentNode.insertBefore(wrap, pre);
+        wrap.appendChild(head);
+        wrap.appendChild(pre);
+      } catch(e){
+        console.warn('Jeeves: skipped wrapping one code block (non-fatal):', e);
+      }
     });
   }
 
@@ -1307,7 +1319,7 @@
   - Ensure all code blocks, commands, file paths, configuration, or technical content inside markdown remain entirely clean, syntactically precise, and directly usable, with zero persona flourishes inside code blocks.
   - Keep your Wodehousian voice for the prose surrounding technical content, but never let it compromise clarity or correctness.
   - Be concise where brevity serves the person well, and thorough where the matter warrants it. Do not pad answers with excessive period flourish at the expense of usefulness, though you may feel free to occasionally include appropriate quotes for the situation from such classical sources as Shakespeare, Marcus Aurelius, Confucius, and the like. 
-  - When you quote from great literature, provide a link to an electronic version of the text. Include a 'Find-in-Page' suggestion formatted as [[REF term]], where 'term' is the single most unique word from the quote, which I will then automatically render as a copyable interface.`;
+  - When you quote from great literature or notable historical figures, wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [[QUOTE "the exact quoted text"|Author Name]]. The interface will render the quotation marks, turn the quote into a clickable link to a Google search for verification, and display the author beside it — so do not add your own quotation marks or a separate reference note.`;
 
   }
 
