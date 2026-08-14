@@ -1680,6 +1680,9 @@
     const contextMessages = state.history.slice(-MAX_TURNS_SENT).map(t => ({ role: t.role, parts: t.parts }));
 
     try {
+          // Waking the voice for mobile browsers
+      const wakeUp = new SpeechSynthesisUtterance('');
+      window.speechSynthesis.speak(wakeUp);
       const url = `https://generativelanguage.googleapis.com/v1beta/${usedModel}:streamGenerateContent?alt=sse&key=${encodeURIComponent(state.apiKey)}`;
       const body = {
         contents: contextMessages,
