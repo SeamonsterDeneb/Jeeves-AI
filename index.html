@@ -770,6 +770,10 @@
       <button type="button" id="mic-btn" class="icon-btn" title="Voice input" aria-label="Voice input" style="width:38px;height:38px;flex-shrink:0;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
       </button>
+      <button type="button" id="mute-btn" class="icon-btn" title="Stop speaking" aria-label="Stop speaking" style="width:38px;height:38px;flex-shrink:0;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+      </button>
+
       <button type="button" id="attach-btn" class="icon-btn" title="Attach image" style="width:38px;height:38px;flex-shrink:0;margin-left:auto;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57a4 4 0 1 1 5.66 5.66l-8.59 8.58a2 2 0 0 1-2.83-2.83l7.88-7.88"/></svg>
       </button>
@@ -1015,27 +1019,33 @@
   const attachBtn = document.getElementById('attach-btn');
   const fileInput = document.getElementById('file-input');
   const micBtn = document.getElementById('mic-btn');
+  const muteBtn = document.getElementById('mute-btn');
+
 
   
-
+  
+  
+  
   let pendingAttachments = [];
-
+  let isVoiceRequest = false;
+  
+  
   function clearPendingImages(){
     pendingAttachments = [];
     imgPreviewBar.innerHTML = '';
     imgPreviewBar.classList.remove('show');
     if (fileInput) fileInput.value = '';
   }
-
-
+  
+  
   function handleFile(file){
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (e) => {
       const id = Date.now();
       const attachment = file.type.startsWith('image/') 
-        ? { id, type: 'image', mimeType: file.type, base64Data: e.target.result.split(',')[1], dataUrl: e.target.result }
-        : { id, type: 'text', fileName: file.name, textContent: e.target.result };
+      ? { id, type: 'image', mimeType: file.type, base64Data: e.target.result.split(',')[1], dataUrl: e.target.result }
+      : { id, type: 'text', fileName: file.name, textContent: e.target.result };
       pendingAttachments.push(attachment);
       const thumb = document.createElement('div');
       thumb.className = 'img-thumb-wrap';
@@ -1046,9 +1056,9 @@
     };
     file.type.startsWith('image/') ? reader.readAsDataURL(file) : reader.readAsText(file);
   }
-
-
-
+  
+  
+  
   // Paste handler
   document.addEventListener('paste', (e) => {
     const clipboardData = e.clipboardData || (e.originalEvent && e.originalEvent.clipboardData);
@@ -1062,7 +1072,7 @@
       }
     }
   });
-
+  
   // Drag and drop handler
   document.addEventListener('dragover', (e) => e.preventDefault());
   document.addEventListener('drop', (e) => {
@@ -1072,7 +1082,7 @@
       handleFile(files[0]);
     }
   });
-
+  
   // Attachment button handlers
   attachBtn.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', (e) => {
@@ -1082,31 +1092,31 @@
       }
     }
   });
-
+  
   if (removeImgBtn) removeImgBtn.addEventListener('click', clearPendingImages);
-
+  
   // ---------- Markdown rendering ----------
   if (typeof marked !== 'undefined') {
     marked.setOptions({ breaks: true, gfm: true });
   }
-
-
-    function escapeHtml(str){
+  
+  
+  function escapeHtml(str){
     return str.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
-
+  
   function renderMarkdownInto(container, rawText){
     const parser = (typeof marked !== 'undefined') ? marked : { parse: (t) => t };
     const dirty = parser.parse(rawText || '');
     const clean = window.DOMPurify ? DOMPurify.sanitize(dirty) : dirty;
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = clean;
-
+    
     // Legacy cleanup: silently strip any old-format [[REF term]] tags that may
     // still be sitting in previously-saved conversation history.
     const legacyRefRegex = /\[\[REF\s+(\w+)\]\]/g;
     tempDiv.innerHTML = tempDiv.innerHTML.replace(legacyRefRegex, '');
-
+    
     // Quote-linking: [[QUOTE "text"|Author]] becomes a clickable link to a
     // Google search for the quote + author, so it's easy to verify or explore further.
     const quoteRegex = /\[\[QUOTE\s+"([^"]*)"\s*\|\s*([^\]]+)\]\]/g;
@@ -1116,23 +1126,23 @@
       const url = `https://www.google.com/search?q=${searchQuery}`;
       return `<a href="${url}" target="_blank" rel="noopener" style="color:var(--brass-bright); text-decoration:underline dotted; text-underline-offset:2px;">&ldquo;${escapeHtml(quoteText)}&rdquo;</a> <span style="font-size:0.85em; color:var(--mist);">&mdash; ${escapeHtml(cleanAuthor)}</span>`;
     });
-
+    
     container.innerHTML = tempDiv.innerHTML;
-
+    
     container.querySelectorAll('pre code').forEach(codeEl => {
       const pre = codeEl.parentElement;
       if (!pre || !pre.parentNode) return;
       if (pre.parentNode.classList && pre.parentNode.classList.contains('code-wrap')) return;
-
+      
       try {
         let lang = '';
         const langMatch = (codeEl.className || '').match(/language-(\S+)/);
         if (langMatch) lang = langMatch[1];
-
+        
         if (window.hljs) {
           try { hljs.highlightElement(codeEl); } catch(e){}
         }
-
+        
         const wrap = document.createElement('div');
         wrap.className = 'code-wrap';
         const head = document.createElement('div');
@@ -1152,7 +1162,7 @@
           });
         });
         head.appendChild(copyBtn);
-
+        
         pre.parentNode.insertBefore(wrap, pre);
         wrap.appendChild(head);
         wrap.appendChild(pre);
@@ -1161,32 +1171,32 @@
       }
     });
   }
-
-
+  
+  
   // ---------- Chat rendering ----------
   function scrollToBottom(){
     chatEl.scrollTop = chatEl.scrollHeight;
   }
-
+  
   function clearChatDom(){
     chatEl.innerHTML = '';
   }
-
+  
   function renderEmptyState(){
     clearChatDom();
     const wrap = document.createElement('div');
     wrap.className = 'empty-state';
     wrap.innerHTML = `
-      <img src="Jeeves.png" alt="Jeeves" class="crest-img" style="width:64px;height:64px;margin:0 auto 18px;">
-      <h2>Good day.</h2>
-      <p>Jeeves stands ready, though he requires a Gemini API key before he may attend to your affairs.</p>
-      <button id="empty-settings-btn">Open Settings</button>
+    <img src="Jeeves.png" alt="Jeeves" class="crest-img" style="width:64px;height:64px;margin:0 auto 18px;">
+    <h2>Good day.</h2>
+    <p>Jeeves stands ready, though he requires a Gemini API key before he may attend to your affairs.</p>
+    <button id="empty-settings-btn">Open Settings</button>
     `;
-
+    
     chatEl.appendChild(wrap);
     document.getElementById('empty-settings-btn').addEventListener('click', openModal);
   }
-
+  
   function messageRow(role){
     const row = document.createElement('div');
     row.className = 'msg-row ' + role;
@@ -1202,13 +1212,13 @@
       avatar.textContent = 'Y';
     }
     const bubble = document.createElement('div');
-
+    
     bubble.className = 'bubble';
     row.appendChild(avatar);
     row.appendChild(bubble);
     return { row, bubble };
   }
-
+  
   function addUserMessage(text, imageDataUrl){
     const { row, bubble } = messageRow('user');
     if (imageDataUrl) {
@@ -1225,8 +1235,8 @@
     chatEl.appendChild(row);
     scrollToBottom();
   }
-
-
+  
+  
   function addSystemNote(text){
     const row = document.createElement('div');
     row.className = 'msg-row system-note';
@@ -1237,15 +1247,15 @@
     chatEl.appendChild(row);
     scrollToBottom();
   }
-
-    function getJeevesVoice() {
+  
+  function getJeevesVoice() {
     const voices = speechSynthesis.getVoices();
     return voices.find(v => v.lang.startsWith('en-GB') && v.name.includes('Google')) 
-        || voices.find(v => v.lang.startsWith('en-GB'))
-        || voices.find(v => v.name.includes('Daniel'))
-        || voices[0];
+    || voices.find(v => v.lang.startsWith('en-GB'))
+    || voices.find(v => v.name.includes('Daniel'))
+    || voices[0];
   }
-
+  
   function speak(text) {
     if (!('speechSynthesis' in window)) return;
     
@@ -1260,7 +1270,12 @@
     u.pitch = 0.9;
     speechSynthesis.speak(u);
   }
-
+  
+  muteBtn.addEventListener('click', () => {
+    if ('speechSynthesis' in window) {
+      speechSynthesis.cancel();
+    }
+  });
 
 
   function addModelMessagePlaceholder(){
@@ -1745,9 +1760,13 @@
         }
       }
 
-      // Speak the final result
-      let finalSpeech = fullText.replace(/```[\s\S]*?```/g, " Please see the code block on screen, Sir. ");
-      speak(finalSpeech);
+      // Speak only if voice-initiated
+      if (isVoiceRequest) {
+        let finalSpeech = fullText.replace(/```[\s\S]*?```/g, " Please see the code block on screen, Sir. ");
+        speak(finalSpeech);
+      }
+      isVoiceRequest = false;
+
 
       if (!fullText) {
 
@@ -1835,8 +1854,14 @@
 
     let baseText = '';
 
+  // Track if current interaction is voice-initiated
+  let isVoiceRequest = false;
+
+  // Inside the event listener for micBtn click:
     micBtn.addEventListener('click', () => {
+      isVoiceRequest = true;
       if (micBtn.classList.contains('listening')) {
+
         recognition.stop();
       } else {
         baseText = inputEl.value ? (inputEl.value.trim() + ' ') : '';
