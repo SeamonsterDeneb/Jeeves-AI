@@ -1021,14 +1021,7 @@
   const micBtn = document.getElementById('mic-btn');
   const muteBtn = document.getElementById('mute-btn');
 
-
-  
-  
-  
-  
-  let pendingAttachments = [];
   let isVoiceRequest = false;
-  
   
   function clearPendingImages(){
     pendingAttachments = [];
@@ -1757,6 +1750,9 @@
             }
             renderMarkdownInto(modelBubble, fullText);
           }
+          if (candidate.finishReason && candidate.finishReason !== 'STOP') {
+            fullText += `\n\n*(Response ended early: ${candidate.finishReason}. Sir may wish to ask Jeeves to continue.)*`;
+          }
         }
       }
 
@@ -1767,6 +1763,13 @@
       }
       isVoiceRequest = false;
 
+
+      // Auto-close any unbalanced code fence before it's rendered or saved,
+      // so a truncated/cut-off response can never poison future turns.
+      const fenceCount = (fullText.match(/```/g) || []).length;
+      if (fenceCount % 2 !== 0) {
+        fullText += '\n```';
+      }
 
       if (!fullText) {
 
@@ -1853,9 +1856,6 @@
     recognition.lang = navigator.language || 'en-US';
 
     let baseText = '';
-
-  // Track if current interaction is voice-initiated
-  let isVoiceRequest = false;
 
   // Inside the event listener for micBtn click:
     micBtn.addEventListener('click', () => {
@@ -1945,10 +1945,20 @@
       row.dataset.id = c.id;
       row.innerHTML = `
         <input type="text" class="archive-input" value="${escapeHtml(c.title)}">
-        <button class="archive-btn" type="button">${c.id === state.activeId ? 'Current' : 'Open'}</button>
+        <button class="archive-btn delete-btn" type="button" style="background:var(--claret); color:white; margin-left:4px;">✕</button>
+        <button class="archive-btn open-btn" type="button">${c.id === state.activeId ? 'Current' : 'Open'}</button>
       `;
-      row.querySelector('.archive-input').onblur = (e) => renameConversation(c.id, e.target.value);
-      row.querySelector('.archive-btn').addEventListener('click', () => switchToConversation(c.id));
+      row.querySelector('.archive-input').addEventListener('blur', (e) => renameConversation(c.id, e.target.value));
+      row.querySelector('.delete-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm('Are you sure you wish to discard this conversation?')) {
+          state.conversations = state.conversations.filter(convo => convo.id !== c.id);
+          if (state.activeId === c.id) startNewChat();
+          else persistHistory();
+          renderArchives();
+        }
+      });
+      row.querySelector('.open-btn').addEventListener('click', () => switchToConversation(c.id));
       archiveContent.appendChild(row);
     });
     archiveOverlay.classList.add('open');
