@@ -397,6 +397,15 @@
     text-align:right;
     padding-right:4px;
   }
+  .sr-only{
+    position:absolute;
+    width:1px; height:1px;
+    padding:0; margin:-1px;
+    overflow:hidden;
+    clip:rect(0,0,0,0);
+    white-space:nowrap;
+    border:0;
+  }
 
   /* Empty state */
   .empty-state{
@@ -1132,20 +1141,32 @@
     function renderMarkdownInto(container, rawText){
     const parser = (typeof marked !== 'undefined') ? marked : { parse: (t) => t };
     const dirty = parser.parse(rawText || '');
-    const clean = window.DOMPurify ? DOMPurify.sanitize(dirty) : dirty;
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = clean;
+    container.innerHTML = window.DOMPurify ? DOMPurify.sanitize(dirty) : dirty;
     
-    // Quote-linking
+    // Locate and convert text nodes containing [[QUOTE...]]
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+    let node;
+    const nodesToReplace = [];
     const quoteRegex = /\[\[QUOTE\s+"([^"]*)"\s*\|\s*([^\]]+)\]\]/g;
-    tempDiv.innerHTML = tempDiv.innerHTML.replace(quoteRegex, (match, quoteText, author) => {
-      const cleanAuthor = author.trim();
-      const searchQuery = encodeURIComponent(`"${quoteText}" ${cleanAuthor} quote`);
-      const url = `https://www.google.com/search?q=${searchQuery}`;
-      return `<a href="${url}" target="_blank" rel="noopener" style="color:var(--brass-bright); text-decoration:underline dotted; text-underline-offset:2px;">&ldquo;${escapeHtml(quoteText)}&rdquo;</a> <span style="color:var(--mist);">&mdash; ${escapeHtml(cleanAuthor)}</span>`;
+
+    while (node = walker.nextNode()) {
+      quoteRegex.lastIndex = 0;
+      if (quoteRegex.test(node.textContent)) nodesToReplace.push(node);
+    }
+
+    nodesToReplace.forEach(node => {
+      const span = document.createElement('span');
+      span.innerHTML = node.textContent.replace(quoteRegex, (match, quoteText, author) => {
+        const cleanAuthor = author.trim();
+        const url = `https://www.google.com/search?q=${encodeURIComponent(`"${quoteText}" ${cleanAuthor} quote`)}`;
+        return `<a href="${url}" target="_blank" rel="noopener" style="color:var(--brass-bright); text-decoration:underline dotted; text-underline-offset:2px; display:inline-flex; align-items:center; gap:3px;">&ldquo;${escapeHtml(quoteText)}&rdquo;<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg><span class="sr-only">(opens in a new tab)</span></a> <span style="color:var(--mist);">&mdash; ${escapeHtml(cleanAuthor)}</span>`;
+      });
+      node.parentNode.replaceChild(span, node);
     });
-    
-    container.innerHTML = tempDiv.innerHTML;
+;
+
+
+
     
     container.querySelectorAll('pre code').forEach(codeEl => {
       const pre = codeEl.parentElement;
@@ -1354,7 +1375,7 @@
   // ---------- Persona ----------
   function buildSystemInstruction(){
     const h = (state.honorific || 'Sir').trim() || 'Sir';
-    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. When you quote from great literature or notable historical figures, wrap the quotation itself (without your own quotation marks) together with its author in this exact format: “the exact quoted text” — Author Name.`;
+    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. When you quote from great literature or notable historical figures, wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [[QUOTE "the exact quoted text"|Author Name]]. Do not add your own quotation marks or a separate reference note around it.`;
 
     if (state.convoType === 'coding') {
       instructions += `\n- You are in 'Coding Help' mode. ALWAYS use small, highly targeted replacements. Favor a micro-replacement strategy over replacing large blocks. Ensure all code blocks, commands, or file paths remain clean and syntactically precise. You must use this pattern for modifications:
