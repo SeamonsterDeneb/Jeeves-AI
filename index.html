@@ -736,6 +736,7 @@
   .convo-wrap{ 
     position:relative; margin-left:auto; display:flex; align-items:center; 
   }
+  .bubble h4 { border-top:1px solid var(--hairline); padding-top:10px; margin:10px 0 5px; }
 
 
   @media (max-width:600px){
@@ -1137,8 +1138,22 @@
   function escapeHtml(str){
     return str.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
+  function addNewTabAffordance(anchor){
+    anchor.target = '_blank';
+    anchor.rel = 'noopener';
+    anchor.style.display = 'inline-flex';
+    anchor.style.alignItems = 'center';
+    anchor.style.gap = '3px';
+    const icon = document.createElement('span');
+    icon.innerHTML = '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>';
+    anchor.appendChild(icon.firstChild);
+    const sr = document.createElement('span');
+    sr.className = 'sr-only';
+    sr.textContent = '(opens in a new tab)';
+    anchor.appendChild(sr);
+  }
   
-    function renderMarkdownInto(container, rawText){
+  function renderMarkdownInto(container, rawText){
     const parser = (typeof marked !== 'undefined') ? marked : { parse: (t) => t };
     const dirty = parser.parse(rawText || '');
     container.innerHTML = window.DOMPurify ? DOMPurify.sanitize(dirty) : dirty;
@@ -1164,10 +1179,17 @@
       node.parentNode.replaceChild(span, node);
     });
 ;
+    // Convert [1] to superscript links
+    container.innerHTML = container.innerHTML.replace(/\[(\d+)\]/g, '<sup id="cite-$1" style="color:var(--brass-bright);">[$1]</sup>');
+
+        container.innerHTML = container.innerHTML.replace(/<p><strong>References<\/strong><br>(.*?)<\/p>/gs, (match, content) => {
+        const items = content.split('<br>').map(item => `<li>${item}</li>`).join('');
+        return `<h4>References</h4><ol style="padding-left:22px;">${items}</ol>`;
+    });
 
 
 
-    
+
     container.querySelectorAll('pre code').forEach(codeEl => {
       const pre = codeEl.parentElement;
       if (!pre || !pre.parentNode || pre.parentNode.classList.contains('code-wrap')) return;
@@ -1196,6 +1218,11 @@
         wrap.appendChild(head);
         wrap.appendChild(pre);
       } catch(e){ console.warn('Jeeves: skipped code block wrap', e); }
+    });
+        container.querySelectorAll('ol li').forEach(li => {
+        li.innerHTML = li.innerHTML.replace(/\(Ethos:([^)]+)\)/, '<small style="color:var(--mist);">Ethos:$1</small>');
+        const link = li.querySelector('a');
+        if (link && !link.querySelector('.sr-only')) addNewTabAffordance(link);
     });
   }
 
@@ -1375,7 +1402,7 @@
   // ---------- Persona ----------
   function buildSystemInstruction(){
     const h = (state.honorific || 'Sir').trim() || 'Sir';
-    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. When you quote from great literature or notable historical figures, wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [[QUOTE "the exact quoted text"|Author Name]]. Do not add your own quotation marks or a separate reference note around it.`;
+    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Whenever you quote from great literature or notable historical figures, always wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [[QUOTE "the exact quoted text"|Author Name]]. Do not add your own quotation marks or a separate reference note around it.`;
 
     if (state.convoType === 'coding') {
       instructions += `\n- You are in 'Coding Help' mode. ALWAYS use small, highly targeted replacements. Favor a micro-replacement strategy over replacing large blocks. Ensure all code blocks, commands, or file paths remain clean and syntactically precise. You must use this pattern for modifications:
@@ -1388,7 +1415,8 @@
     } else if (state.convoType === 'cooking') {
       instructions += `\n- You are in 'Culinary Advice' mode. Always justify your recommendations with links to reputable cooking blogs or resources that support your suggestions. After explaining the suggestion, if there's enough information in the conversation to compose an entire recipe, put the entirety in a code block for easy copying`;
     } else if (state.convoType === 'research') {
-      instructions += `\n- You are in 'Research Assistance' mode. Focus on clear, verifiable citations.`;
+      instructions += `\n- You are in 'Research Assistance' mode. Focus on clear, verifiable citations. In 'Research Assistance' mode, cite every claim with a superscript footnote like [1]. At the end of the response, include a 'References' section. Format each reference as: [1] (Ethos: [Brief description of source reliability]) [Citation Title](URL). If quoting, include the quote in the reference line.
+`;
     }
     return instructions;
   }
