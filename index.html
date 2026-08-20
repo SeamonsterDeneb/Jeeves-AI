@@ -710,7 +710,24 @@
   font-size:14.5px;
   color:var(--parchment);
   border-top-right-radius:3px;
-}
+  }
+  .convo-select{
+    appearance:none; -webkit-appearance:none;
+    background:var(--ink-panel-2);
+    border:1px solid var(--hairline);
+    color:var(--parchment);
+    padding:0 28px 0 12px;
+    height:38px;
+    border-radius:10px;
+    font-family:var(--font-ui);
+    font-size:13px;
+    cursor:pointer;
+    outline:none;
+  }
+  .convo-wrap{ 
+    position:relative; margin-left:auto; display:flex; align-items:center; 
+  }
+
 
   @media (max-width:600px){
 
@@ -774,7 +791,17 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
       </button>
 
-      <button type="button" id="attach-btn" class="icon-btn" title="Attach image" style="width:38px;height:38px;flex-shrink:0;margin-left:auto;">
+      <div class="convo-wrap">
+        <select id="convo-type" class="convo-select">
+          <option value="general">General Conversation</option>
+          <option value="coding">Coding Help</option>
+          <option value="cooking">Culinary Advice</option>
+          <option value="research">Research Assistance</option>
+        </select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute; right:8px; pointer-events:none; width:14px; height:14px; color:var(--mist);"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+      <button type="button" id="attach-btn" class="icon-btn" title="Attach image" style="width:38px;height:38px;flex-shrink:0;">
+
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57a4 4 0 1 1 5.66 5.66l-8.59 8.58a2 2 0 0 1-2.83-2.83l7.88-7.88"/></svg>
       </button>
       <button id="send-btn" title="Send" aria-label="Send message">
@@ -899,6 +926,8 @@
     honorific: localStorage.getItem(LS_KEY_HONORIFIC) || 'Sir',
     theme: localStorage.getItem(LS_KEY_THEME) || 'light',
     model: localStorage.getItem(LS_KEY_MODEL) || '',
+    convoType: 'general',
+
 
     history: [],
     conversations: [],
@@ -908,6 +937,8 @@
     pricing: {},
     usageLog: JSON.parse(localStorage.getItem(LS_KEY_USAGE)) || [],
   };
+  let pendingAttachments = [];
+
 
   function applyTheme(themeName) {
     if (themeName === 'light') {
@@ -1098,44 +1129,32 @@
     return str.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
   
-  function renderMarkdownInto(container, rawText){
+    function renderMarkdownInto(container, rawText){
     const parser = (typeof marked !== 'undefined') ? marked : { parse: (t) => t };
     const dirty = parser.parse(rawText || '');
     const clean = window.DOMPurify ? DOMPurify.sanitize(dirty) : dirty;
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = clean;
     
-    // Legacy cleanup: silently strip any old-format [[REF term]] tags that may
-    // still be sitting in previously-saved conversation history.
-    const legacyRefRegex = /\[\[REF\s+(\w+)\]\]/g;
-    tempDiv.innerHTML = tempDiv.innerHTML.replace(legacyRefRegex, '');
-    
-    // Quote-linking: [[QUOTE "text"|Author]] becomes a clickable link to a
-    // Google search for the quote + author, so it's easy to verify or explore further.
+    // Quote-linking
     const quoteRegex = /\[\[QUOTE\s+"([^"]*)"\s*\|\s*([^\]]+)\]\]/g;
     tempDiv.innerHTML = tempDiv.innerHTML.replace(quoteRegex, (match, quoteText, author) => {
       const cleanAuthor = author.trim();
       const searchQuery = encodeURIComponent(`"${quoteText}" ${cleanAuthor} quote`);
       const url = `https://www.google.com/search?q=${searchQuery}`;
-      return `<a href="${url}" target="_blank" rel="noopener" style="color:var(--brass-bright); text-decoration:underline dotted; text-underline-offset:2px;">&ldquo;${escapeHtml(quoteText)}&rdquo;</a> <span style="font-size:0.85em; color:var(--mist);">&mdash; ${escapeHtml(cleanAuthor)}</span>`;
+      return `<a href="${url}" target="_blank" rel="noopener" style="color:var(--brass-bright); text-decoration:underline dotted; text-underline-offset:2px;">&ldquo;${escapeHtml(quoteText)}&rdquo;</a> <span style="color:var(--mist);">&mdash; ${escapeHtml(cleanAuthor)}</span>`;
     });
     
     container.innerHTML = tempDiv.innerHTML;
     
     container.querySelectorAll('pre code').forEach(codeEl => {
       const pre = codeEl.parentElement;
-      if (!pre || !pre.parentNode) return;
-      if (pre.parentNode.classList && pre.parentNode.classList.contains('code-wrap')) return;
-      
+      if (!pre || !pre.parentNode || pre.parentNode.classList.contains('code-wrap')) return;
       try {
         let lang = '';
         const langMatch = (codeEl.className || '').match(/language-(\S+)/);
         if (langMatch) lang = langMatch[1];
-        
-        if (window.hljs) {
-          try { hljs.highlightElement(codeEl); } catch(e){}
-        }
-        
+        if (window.hljs) hljs.highlightElement(codeEl);
         const wrap = document.createElement('div');
         wrap.className = 'code-wrap';
         const head = document.createElement('div');
@@ -1149,21 +1168,17 @@
           navigator.clipboard.writeText(codeEl.textContent).then(() => {
             copyBtn.textContent = 'Copied';
             setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1600);
-          }).catch(() => {
-            copyBtn.textContent = 'Failed';
-            setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1600);
           });
         });
         head.appendChild(copyBtn);
-        
         pre.parentNode.insertBefore(wrap, pre);
         wrap.appendChild(head);
         wrap.appendChild(pre);
-      } catch(e){
-        console.warn('Jeeves: skipped wrapping one code block (non-fatal):', e);
-      }
+      } catch(e){ console.warn('Jeeves: skipped code block wrap', e); }
     });
   }
+
+
   
   
   // ---------- Chat rendering ----------
@@ -1339,21 +1354,25 @@
   // ---------- Persona ----------
   function buildSystemInstruction(){
     const h = (state.honorific || 'Sir').trim() || 'Sir';
-    return `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}" (or a naturally fitting equivalent, such as "sir" or "madam", if context makes that more appropriate), and you speak with dry British understatement, formal diction, and unfailing courtesy, in the manner of a devoted and quietly brilliant valet.
+    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. When you quote from great literature or notable historical figures, wrap the quotation itself (without your own quotation marks) together with its author in this exact format: “the exact quoted text” — Author Name.`;
 
-  However, your true purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner, never a hindrance to substance:
-  - When asked a factual, technical, or practical question, give a complete, correct, and clearly organised answer.
-  - When providing code modifications, ALWAYS use small, highly targeted replacements. Format code blocks to contain ONLY the relevant lines, ensuring no trailing newlines are included, so that the blocks are immediately ready for copy-pasting into your editor. Format code replacements strictly using this pattern:
-  Paste this:
-  [targeted new code]
-  Over this:
-  [existing code]
-  - Ensure all code blocks, commands, file paths, configuration, or technical content inside markdown remain entirely clean, syntactically precise, and directly usable, with zero persona flourishes inside code blocks.
-  - Keep your Wodehousian voice for the prose surrounding technical content, but never let it compromise clarity or correctness.
-  - Be concise where brevity serves the person well, and thorough where the matter warrants it. Do not pad answers with excessive period flourish at the expense of usefulness, though you may feel free to occasionally include appropriate quotes for the situation from such classical sources as Shakespeare, Marcus Aurelius, Confucius, and the like. 
-  - When you quote from great literature or notable historical figures, wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [[QUOTE "the exact quoted text"|Author Name]]. The interface will render the quotation marks, turn the quote into a clickable link to a Google search for verification, and display the author beside it — so do not add your own quotation marks or a separate reference note.`;
-
+    if (state.convoType === 'coding') {
+      instructions += `\n- You are in 'Coding Help' mode. ALWAYS use small, highly targeted replacements. Favor a micro-replacement strategy over replacing large blocks. Ensure all code blocks, commands, or file paths remain clean and syntactically precise. You must use this pattern for modifications:
+      Paste this:
+      [targeted new code]
+      Over this:
+      [existing code]`;
+    } else if (state.convoType === 'general') {
+      instructions += `\n- You are in 'General Conversation' mode. If you provide any draft text (emails, messages, search terms, etc.), please present the final result within a code block for easy copying.`;
+    } else if (state.convoType === 'cooking') {
+      instructions += `\n- You are in 'Culinary Advice' mode. Always justify your recommendations with links to reputable cooking blogs or resources that support your suggestions. After explaining the suggestion, if there's enough information in the conversation to compose an entire recipe, put the entirety in a code block for easy copying`;
+    } else if (state.convoType === 'research') {
+      instructions += `\n- You are in 'Research Assistance' mode. Focus on clear, verifiable citations.`;
+    }
+    return instructions;
   }
+
+
 
 
   // ---------- Settings modal ----------
@@ -1691,12 +1710,16 @@
           // Waking the voice for mobile browsers
       const wakeUp = new SpeechSynthesisUtterance('');
       window.speechSynthesis.speak(wakeUp);
+      const systemInstruction = buildSystemInstruction();
+      if (!systemInstruction) throw new Error("System instruction is empty.");
+      
       const url = `https://generativelanguage.googleapis.com/v1beta/${usedModel}:streamGenerateContent?alt=sse&key=${encodeURIComponent(state.apiKey)}`;
       const body = {
         contents: contextMessages,
-        systemInstruction: { parts: [{ text: buildSystemInstruction() }] },
+        systemInstruction: { parts: [{ text: systemInstruction }] },
         generationConfig: { temperature: 0.85 }
       };
+
 
       const resp = await fetch(url, {
         method: 'POST',
@@ -1772,8 +1795,8 @@
       }
 
       if (!fullText) {
-
-        fullText = "I'm afraid a response did not materialise. Perhaps the request might be rephrased, Sir.";
+        console.error("Jeeves: Stream finished but fullText is empty.");
+        fullText = "I'm terribly sorry, Sir, but my train of thought appears to have been derailed. Might we try that again?";
         renderMarkdownInto(modelBubble, fullText);
       }
 
@@ -2026,6 +2049,9 @@
       state.pricing[modelSelect.value].free = false;
     }
     updateSessionTotalNote();
+  });
+    document.getElementById('convo-type').addEventListener('change', (e) => {
+    state.convoType = e.target.value;
   });
 
   let fetchDebounce;
