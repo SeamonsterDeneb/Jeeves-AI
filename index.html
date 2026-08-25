@@ -916,10 +916,14 @@
 </div>
 
 <script>
+
 (function(){
   'use strict';
+  // Configure highlight.js immediately
+  hljs.configure({ ignoreUnescapedHTML: true });
 
   // ---------- Config / storage ----------
+
   const LS_KEY_API = 'jeeves_api_key';
   const LS_KEY_HONORIFIC = 'jeeves_honorific';
   const LS_KEY_THEME = 'jeeves_theme';
@@ -1172,7 +1176,12 @@
   function renderMarkdownInto(container, rawText){
     const parser = (typeof marked !== 'undefined') ? marked : { parse: (t) => t };
     const dirty = parser.parse(rawText || '');
-    container.innerHTML = window.DOMPurify ? DOMPurify.sanitize(dirty) : dirty;
+    if (window.DOMPurify) {
+      container.innerHTML = DOMPurify.sanitize(dirty);
+    } else {
+      console.error("Jeeves: Security risk! DOMPurify failed to load.");
+      container.textContent = "Error: Security components failed to load.";
+    }
     
     // Locate and convert text nodes containing [[QUOTE...]]
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
@@ -2150,6 +2159,7 @@
     setTimeout(openModal, 300);
   }
 })();
+
 </script>
 <script>
   navigator.serviceWorker.register('sw.js');
