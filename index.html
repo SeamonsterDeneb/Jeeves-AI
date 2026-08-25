@@ -135,7 +135,8 @@
     background:transparent;
     border:1px solid transparent;
     color:var(--parchment-dim);
-    width:36px;height:36px;
+    width:34px !important;
+    height:34px !important;
     border-radius:50%;
     display:flex;align-items:center;justify-content:center;
     cursor:pointer;
@@ -339,7 +340,7 @@
   /* Composer */
   footer#composer{
     flex:0 0 auto;
-    padding:12px 16px 16px;
+    padding:12px 10px 16px; /* Slightly tighter padding */
     background:linear-gradient(0deg, var(--ink-panel), rgba(24,41,32,0));
     border-top:1px solid var(--hairline);
   }
@@ -359,7 +360,7 @@
   .composer-actions{
     display:flex;
     align-items:center;
-    gap:6px;
+    gap:2px; /* Tightened gap between icons to save space */
   }
   textarea#input{
     flex:1;
@@ -378,7 +379,8 @@
   #send-btn{
     background:var(--brass);
     border:none;
-    width:38px;height:38px;
+    width:34px !important;
+    height:34px !important;
     border-radius:10px;
     display:flex;align-items:center;justify-content:center;
     cursor:pointer;
@@ -738,6 +740,15 @@
   }
   .bubble h4 { border-top:1px solid var(--hairline); padding-top:10px; margin:10px 0 5px; }
 
+  #convo-type {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 36px !important;
+    padding-left: 8px !important;
+    transition: width 0.2s;
+  }
+#convo-type:focus { width: 180px !important; }
+
 
   @media (max-width:600px){
 
@@ -803,7 +814,7 @@
 
             <div class="convo-wrap">
         <select id="convo-type" class="convo-select" style="width: 58px; transition: width 0.2s;" 
-                onfocus="this.style.width='200px'" 
+                onfocus="this.style.width='190px'" 
                 onblur="this.style.width='58px'" 
                 onchange="this.style.width='58px'">
           <option value="general">💬 General Conversation</option>
@@ -1936,17 +1947,13 @@
 
   // Inside the event listener for micBtn click:
     micBtn.addEventListener('click', () => {
-      isVoiceRequest = true;
       if (micBtn.classList.contains('listening')) {
-
+        isVoiceRequest = false;
         recognition.stop();
       } else {
+        isVoiceRequest = true;
         baseText = inputEl.value ? (inputEl.value.trim() + ' ') : '';
-        try {
-          recognition.start();
-        } catch(err) {
-          console.error('Speech recognition failed to start:', err);
-        }
+        try { recognition.start(); } catch(err) { console.log("Mic error:", err); }
       }
     });
 
@@ -1954,8 +1961,18 @@
       micBtn.classList.add('listening');
     };
 
+    recognition.onspeechend = () => {
+      // Do nothing here. 
+      // By leaving this empty, we prevent the browser from 
+      // automatically shutting down the recording on a pause.
+    };
+
     recognition.onend = () => {
       micBtn.classList.remove('listening');
+      // Only restart if the user hasn't manually clicked 'off'
+      if (isVoiceRequest) {
+        recognition.start();
+      }
     };
 
     recognition.onresult = (event) => {
@@ -1968,10 +1985,7 @@
       inputEl.focus();
     };
 
-    recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-      micBtn.classList.remove('listening');
-    };
+
   } else if (micBtn) {
     micBtn.style.display = 'none';
   }
