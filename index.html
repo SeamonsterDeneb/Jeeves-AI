@@ -743,7 +743,7 @@
   #convo-type {
     -webkit-appearance: none;
     appearance: none;
-    width: 36px !important;
+    width: 36px;
     padding-left: 8px !important;
     transition: width 0.2s;
   }
@@ -813,10 +813,10 @@
       </button>
 
             <div class="convo-wrap">
-        <select id="convo-type" class="convo-select" style="width: 58px; transition: width 0.2s;" 
+        <select id="convo-type" class="convo-select" style="width: 54px; transition: width 0.2s;" 
                 onfocus="this.style.width='190px'" 
-                onblur="this.style.width='58px'" 
-                onchange="this.style.width='58px'">
+                onblur="this.style.width='54px'" 
+                onchange="this.style.width='54px'">
           <option value="general">💬 General Conversation</option>
           <option value="coding">💻 Coding Help</option>
           <option value="cooking">🍳 Culinary Advice</option>
@@ -1362,12 +1362,12 @@
   function addModelMessagePlaceholder(){
     const { row, bubble } = messageRow('model');
     const phrases = [
-      "Allow me to consider that, Sir.",
-      "Let me ponder the particulars of your request for a moment.",
-      "One moment, Sir; let me turn that over in my mind.",
-      "I shall examine the matter forthwith, Sir.",
-      "If you would be so kind as to wait a moment, I am looking into that.",
-      "Just a brief pause, Sir, while I arrange my thoughts."
+      `Allow me to consider that, ${state.honorific}.`,
+      `Let me ponder the particulars of your request for a moment.`,
+      `One moment, ${state.honorific}; let me turn that over in my mind.`,
+      `I shall examine the matter forthwith, ${state.honorific}.`,
+      `If you would be so kind as to wait a moment, I am looking into that.`,
+      `Just a brief pause, ${state.honorific}, while I arrange my thoughts.`
     ];
     const phrase = phrases[Math.floor(Math.random() * phrases.length)];
     bubble.innerHTML = `<span style="font-family:var(--font-ui); font-size:14px; color:var(--mist);">${phrase}</span>`;    
@@ -1848,14 +1848,14 @@
             renderMarkdownInto(modelBubble, fullText);
           }
           if (candidate.finishReason && candidate.finishReason !== 'STOP') {
-            fullText += `\n\n*(Response ended early: ${candidate.finishReason}. Sir may wish to ask Jeeves to continue.)*`;
+            fullText += `\n\n*(Response ended early: ${candidate.finishReason}. You may wish to ask Jeeves to continue.)*`;
           }
         }
       }
 
       // Speak only if voice-initiated
       if (isVoiceRequest) {
-        let finalSpeech = fullText.replace(/```[\s\S]*?```/g, " Please see the code block on screen, Sir. ");
+        let finalSpeech = fullText.replace(/```[\s\S]*?```/g, " Please see the code block on screen, ${honorific}. ");
         speak(finalSpeech);
       }
       isVoiceRequest = false;
