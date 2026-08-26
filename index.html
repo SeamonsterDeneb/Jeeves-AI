@@ -355,12 +355,7 @@
     border-radius:14px;
     padding:10px 12px;
     transition:border-color .2s ease;
-  }
-  .composer-inner:focus-within{ border-color:var(--brass); }
-  .composer-actions{
-    display:flex;
-    align-items:center;
-    gap:2px; /* Tightened gap between icons to save space */
+    min-height:54px;
   }
   textarea#input{
     flex:1;
@@ -372,9 +367,20 @@
     font-family:var(--font-ui);
     font-size:15px;
     line-height:1.4;
-    max-height:160px;
     padding:8px 0;
+    min-height:24px;
+    max-height:45vh;
+    overflow-y: hidden;
   }
+
+
+  .composer-inner:focus-within{ border-color:var(--brass); }
+  .composer-actions{
+    display:flex;
+    align-items:center;
+    gap:2px; /* Tightened gap between icons to save space */
+  }
+
   textarea#input::placeholder{ color:var(--mist); }
   #send-btn{
     background:var(--brass);
@@ -748,6 +754,32 @@
     transition: width 0.2s;
   }
 #convo-type:focus { width: 180px !important; }
+
+.composer-inner {
+  display: inline-grid;
+  width: 100%;
+}
+
+/* Treat both the pseudo-element and the textarea as the same grid cell */
+.composer-inner::after,
+.composer-inner textarea {
+  grid-area: 1 / 1 / 2 / 2;
+  font: inherit;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+}
+
+/* This invisible pseudo-element stretches the container */
+.composer-inner::after {
+  content: attr(data-replicated-value) " ";
+  white-space: pre-wrap;
+  visibility: hidden;
+}
+
+.composer-inner textarea {
+  resize: none;
+  overflow: hidden;
+}
 
 
   @media (max-width:600px){
@@ -1734,8 +1766,11 @@
   }
 
   function autoResizeInput(){
+    const maxHeight = Math.round(window.innerHeight * 0.45);
     inputEl.style.height = 'auto';
-    inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + 'px';
+    const newHeight = Math.min(inputEl.scrollHeight, maxHeight);
+    inputEl.style.height = newHeight + 'px';
+    inputEl.style.overflowY = inputEl.scrollHeight > maxHeight ? 'auto' : 'hidden';
   }
 
   async function sendMessage(){
@@ -2152,6 +2187,8 @@
     }
   });
   inputEl.addEventListener('input', autoResizeInput);
+  autoResizeInput();
+
 
   // ---------- Init ----------
   replayHistory();
