@@ -504,6 +504,12 @@
     border-radius:10px;
     padding:8px 10px;
   }
+  .archive-title-wrap{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    min-width:0;
+  }
   .archive-input{
     flex:1;
     background:transparent;
@@ -512,7 +518,22 @@
     color:var(--parchment);
     font-family:var(--font-ui);
     font-size:14px;
-    padding:6px 4px;
+    padding:6px 4px 0;
+  }
+  .archive-timestamp{
+    font-family:var(--font-ui);
+    font-size:12px;
+    color:var(--mist);
+    padding:0 4px 4px;
+  }
+  .meta-line{
+    font-family:var(--font-ui);
+    font-size:11px;
+    color:var(--mist);
+    margin-top:8px;
+    padding-top:7px;
+    border-top:1px solid var(--hairline);
+    letter-spacing:0.2px;
   }
   .archive-btn{
     background:var(--brass);
@@ -783,6 +804,8 @@
 }
 
 
+
+
   @media (max-width:600px){
 
     header.letterhead{ padding:12px 14px 10px; }
@@ -1040,13 +1063,13 @@
         const savedHistory = localStorage.getItem(LS_KEY_HISTORY);
         if (savedHistory) migratedHistory = JSON.parse(savedHistory);
       } catch(e){ /* ignore malformed legacy history */ }
-      state.conversations = [{ id: 'default', title: 'Main Conversation', history: migratedHistory }];
+      state.conversations = [{ id: 'default', title: 'Main Conversation', history: migratedHistory, updatedAt: Date.now() }];
     }
     if (!state.conversations.length) {
-      state.conversations = [{ id: 'default', title: 'Main Conversation', history: [] }];
+      state.conversations = [{ id: 'default', title: 'Main Conversation', history: [], updatedAt: Date.now() }];
     }
   } catch(e){
-    state.conversations = [{ id: 'default', title: 'Main Conversation', history: [] }];
+    state.conversations = [{ id: 'default', title: 'Main Conversation', history: [], updatedAt: Date.now() }];
   }
 
   {
@@ -1433,22 +1456,17 @@
     return { row, bubble };
   }
 
-  function buildMetaLine(usage, modelName){
+  function buildMetaLine(usage, modelName, timestamp){
     if (!usage) return null;
     const meta = document.createElement('div');
-    meta.style.fontFamily = 'var(--font-ui)';
-    meta.style.fontSize = '11px';
-    meta.style.color = 'var(--mist)';
-    meta.style.marginTop = '8px';
-    meta.style.paddingTop = '7px';
-    meta.style.borderTop = '1px solid var(--hairline)';
-    meta.style.letterSpacing = '0.2px';
+    meta.className = 'meta-line';
+    const stamp = timestamp ? new Date(timestamp).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Unknown time';
     const inTok = usage.promptTokenCount || 0;
     const outTok = usage.candidatesTokenCount || 0;
     const totTok = usage.totalTokenCount || (inTok + outTok);
     const cost = computeCost(usage, modelName);
     const costText = cost === null ? 'cost unset' : formatCost(cost);
-    meta.textContent = `${shortModelName(modelName)} · ${inTok}→${outTok} tokens (${totTok} total) · ${costText}`;
+    meta.textContent = `${stamp} · ${shortModelName(modelName)} · ${inTok}→${outTok} tokens (${totTok} total) · ${costText}`;
     return meta;
   }
 
@@ -1484,7 +1502,7 @@
   // ---------- Persona ----------
   function buildSystemInstruction(){
     const h = (state.honorific || 'Sir').trim() || 'Sir';
-    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. Current date and time: ${now}. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Whenever you quote from great literature or notable historical figures, always wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [[QUOTE "the exact quoted text"|Author Name]]. Do not add your own quotation marks or a separate reference note around it.`;
+    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Whenever you quote from great literature or notable historical figures, always wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [[QUOTE "the exact quoted text"|Author Name]]. Do not add your own quotation marks or a separate reference note around it.`;
 
     if (state.convoType === 'coding') {
       instructions += `\n- You are in 'Coding Help' mode. ALWAYS use small, highly targeted replacements. Favor a micro-replacement strategy over replacing large blocks. Ensure all code blocks, commands, or file paths remain clean and syntactically precise. You must use this pattern for modifications:
@@ -1785,6 +1803,7 @@
     const idx = state.conversations.findIndex(c => c.id === state.activeId);
     if (idx !== -1) {
       state.conversations[idx].history = state.history;
+      state.conversations[idx].updatedAt = Date.now();
       try { localStorage.setItem(LS_KEY_CONVERSATIONS, JSON.stringify(state.conversations)); } catch(e){}
     }
     try { localStorage.setItem(LS_KEY_ACTIVE, state.activeId); } catch(e){}
@@ -1943,13 +1962,13 @@
         updateUsageDashboard();
       }
 
-      const historyEntry = { role: 'model', parts: [{ text: fullText }], model: usedModel };
+      const historyEntry = { role: 'model', parts: [{ text: fullText }], model: usedModel, timestamp: Date.now() };
       if (usageMetadata) historyEntry.usage = usageMetadata;
       state.history.push(historyEntry);
       persistHistory();
 
       if (usageMetadata) {
-        const meta = buildMetaLine(usageMetadata, usedModel);
+        const meta = buildMetaLine(usageMetadata, usedModel, historyEntry.timestamp);
         if (meta) modelBubble.appendChild(meta);
       }
 
@@ -2074,7 +2093,7 @@
       if (convo) convo.title = title;
     }
     const id = Date.now().toString();
-    state.conversations.push({ id, title: 'New Conversation', history: [] });
+    state.conversations.push({ id, title: 'New Conversation', history: [], updatedAt: Date.now() });
     state.activeId = id;
     state.history = [];
     persistHistory();
@@ -2106,8 +2125,12 @@
       const row = document.createElement('div');
       row.className = 'archive-row';
       row.dataset.id = c.id;
+      const stamp = c.updatedAt ? new Date(c.updatedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'No date recorded';
       row.innerHTML = `
-        <input type="text" class="archive-input" value="${escapeHtml(c.title)}">
+        <div class="archive-title-wrap">
+          <input type="text" class="archive-input" value="${escapeHtml(c.title)}">
+          <div class="archive-timestamp">${escapeHtml(stamp)}</div>
+        </div>
         <button class="archive-btn delete-btn" type="button" style="background:var(--claret); color:white; margin-left:4px;">✕</button>
         <button class="archive-btn open-btn" type="button">${c.id === state.activeId ? 'Current' : 'Open'}</button>
       `;
