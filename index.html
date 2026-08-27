@@ -636,7 +636,7 @@
     display:none;
   }
   .status-msg.show{ display:block; }
-  .status-msg.error{ background:rgba(138,59,70,0.18); border:1px solid var(--claret); color:#e6b3ba; }
+  .status-msg.error{ background:rgba(138,59,70,0.18); border:1px solid var(--claret); color:#B8484B; }
   .status-msg.ok{ background:rgba(184,146,90,0.12); border:1px solid var(--brass); color:var(--brass-bright); }
   .status-msg.loading{ background:rgba(125,150,134,0.1); border:1px solid var(--hairline); color:var(--mist); }
   .model-badge{
@@ -756,8 +756,9 @@
 #convo-type:focus { width: 180px !important; }
 
 .composer-inner {
-  display: inline-grid;
+  display: grid;
   width: 100%;
+  margin: 0px auto;
 }
 
 /* Treat both the pseudo-element and the textarea as the same grid cell */
@@ -814,7 +815,9 @@
   <div class="archive-header">
     <h2>Conversations</h2>
     <input type="text" id="search-archives" placeholder="Search..." style="background:var(--ink-panel-2); border:1px solid var(--hairline); border-radius:6px; color:var(--parchment); padding:4px 8px; font-size:13px; width:120px;">
+    <button class="icon-btn" id="refine-titles-btn" title="Refine titles" style="font-size:12px;">✎</button>
     <button class="icon-btn" id="close-archives">✕</button>
+
   </div>
 
   <div id="archive-content" class="archive-list"></div>
@@ -1058,6 +1061,16 @@
       return data.candidates[0].content.parts[0].text.replace(/["']/g, '').trim();
     } catch(e) { return 'New Conversation'; }
   }
+
+  async function refineAllTitles() {
+    const unnamed = state.conversations.filter(c => c.title === 'New Conversation' && c.history.length > 0);
+    for (const convo of unnamed) {
+      convo.title = await generateTitle(convo.history);
+    }
+    persistHistory();
+    renderArchives();
+  }
+
 
 
   try {
@@ -2110,12 +2123,14 @@
     });
   });
 
-
-
+  
+  
+  
   document.getElementById('new-chat-btn').addEventListener('click', startNewChat);
   document.getElementById('archive-btn').addEventListener('click', renderArchives);
   closeArchivesBtn.addEventListener('click', () => archiveOverlay.classList.remove('open'));
-
+  document.getElementById('refine-titles-btn').addEventListener('click', refineAllTitles);
+  
   // ---------- Event wiring ----------
 
   settingsBtn.addEventListener('click', openModal);
@@ -2162,7 +2177,7 @@
     }
     updateSessionTotalNote();
   });
-    document.getElementById('convo-type').addEventListener('change', (e) => {
+  document.getElementById('convo-type').addEventListener('change', (e) => {
     state.convoType = e.target.value;
   });
 
