@@ -2121,7 +2121,7 @@
 
   function renderArchives(){
     archiveContent.innerHTML = '';
-    state.conversations.forEach(c => {
+    [...state.conversations].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).forEach(c => {
       const row = document.createElement('div');
       row.className = 'archive-row';
       row.dataset.id = c.id;
@@ -2153,13 +2153,45 @@
 
   document.getElementById('search-archives').addEventListener('input', (e) => {
     const term = e.target.value.toLowerCase();
-    document.querySelectorAll('.archive-row').forEach(row => {
+    const rows = Array.from(document.querySelectorAll('.archive-row'));
+    if (!term) {
+      rows.forEach(r => { r.style.display = 'flex'; r.querySelector('.archive-timestamp').style.display = 'block'; });
+      return;
+    }
+    const results = rows.map(row => {
       const convo = state.conversations.find(c => c.id === row.dataset.id);
-      if (!convo) return;
-      const content = JSON.stringify(convo.history || []).toLowerCase();
-      row.style.display = (content.includes(term) || convo.title.toLowerCase().includes(term)) ? 'flex' : 'none';
+      let plainText = "";
+      convo.history.forEach(turn => turn.parts.forEach(p => { 
+        if(p.text && !p.text.includes('Current date and time:') && !p.text.includes('You are Reginald Jeeves')) {
+          plainText += p.text.replace(/```[\s\S]*?```/g, ' ') + " "; 
+        }
+      }));
+
+      const matches = [...plainText.toLowerCase().matchAll(new RegExp(term, 'g'))];
+      return { row, plainText, count: matches.length, convo };
+    }).filter(r => r.count > 0);
+
+    results.sort((a, b) => b.count - a.count || b.convo.updatedAt - a.convo.updatedAt);
+    
+    results.forEach(({row, plainText, count}, i) => {
+      row.style.order = i;
+      row.style.display = 'flex';
+      const ts = row.querySelector('.archive-timestamp');
+      const words = plainText.split(/\s+/);
+      const snippets = [];
+      words.forEach((w, idx) => {
+        if (w.toLowerCase().includes(term) && snippets.length < 3) {
+          const start = Math.max(0, idx - 5);
+          const end = Math.min(words.length, idx + 6);
+          snippets.push('...' + words.slice(start, end).join(' ').replace(new RegExp(term, 'gi'), (m) => `<strong>${m}</strong>`) + '...');
+        }
+      });
+      ts.innerHTML = snippets.join('<br>');
     });
+    rows.filter(r => !results.find(res => res.row === r)).forEach(r => r.style.display = 'none');
   });
+
+
 
   
   
