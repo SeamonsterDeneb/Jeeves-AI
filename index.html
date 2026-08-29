@@ -18,9 +18,6 @@
 <script src="js/highlight.min.js"></script>
 <link rel="manifest" href="manifest.json">
 
-
-
-
 <style>
   :root{
     --ink-deep:#101d17;
@@ -264,8 +261,22 @@
     text-align:center;
   }
 
-  /* Code blocks */
-  .code-wrap{
+  .text-copy-wrap{
+    margin:10px 0;
+    border-radius:8px;
+    border:1px solid var(--hairline);
+    background:rgba(184,146,90,0.04);
+    overflow:hidden;
+  }
+  .text-copy-body{
+    padding:12px 14px;
+    font-size:14.5px;
+    line-height:1.6;
+    color:var(--parchment);
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+
     font-family:var(--font-ui);
     margin:10px 0;
     border-radius:8px;
@@ -317,6 +328,14 @@
   .code-wrap .hljs .hljs-attribute {
     color: #9BBDDE
   }
+
+  .code-wrap pre,
+pre code.hljs {
+  white-space: pre-wrap;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
 
   .typing{
     display:inline-flex;
@@ -1292,9 +1311,6 @@
         return `<h4>References</h4><ol style="padding-left:22px;">${items}</ol>`;
     });
 
-
-
-
     container.querySelectorAll('pre code').forEach(codeEl => {
       const pre = codeEl.parentElement;
       if (!pre || !pre.parentNode || pre.parentNode.classList.contains('code-wrap')) return;
@@ -1324,6 +1340,7 @@
         wrap.appendChild(pre);
       } catch(e){ console.warn('Jeeves: skipped code block wrap', e); }
     });
+
         container.querySelectorAll('ol li').forEach(li => {
         li.innerHTML = li.innerHTML.replace(/\(Ethos:([^)]+)\)/, '<small style="color:var(--mist);">Ethos:$1</small>');
         const link = li.querySelector('a');
