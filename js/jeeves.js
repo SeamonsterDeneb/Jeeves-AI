@@ -228,14 +228,17 @@
   });
   
   // Attachment button handlers
-  attachBtn.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', (e) => {
-    if (e.target.files) {
-      for(let i = 0; i < e.target.files.length; i++) {
-        handleFile(e.target.files[i]);
+  if (attachBtn && fileInput) {
+    attachBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files) {
+        for(let i = 0; i < e.target.files.length; i++) {
+          handleFile(e.target.files[i]);
+        }
       }
-    }
-  });
+    });
+  }
+
   
   if (removeImgBtn) removeImgBtn.addEventListener('click', clearPendingImages);
   
@@ -315,13 +318,19 @@
         wrap.textContent = codeEl.textContent.trim();
 
         const copyBtn = document.createElement('button');
-        copyBtn.className = 'copy-btn';
+        copyBtn.className = 'corner-copy-btn';
         copyBtn.type = 'button';
-        copyBtn.textContent = 'Copy';
+        copyBtn.title = 'Copy note';
+        copyBtn.setAttribute('aria-label', 'Copy note');
+        
+        const copyIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+        const checkIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+        copyBtn.innerHTML = copyIcon;
+
         copyBtn.addEventListener('click', () => {
-          navigator.clipboard.writeText(wrap.textContent.replace(/^Copy/, '').trim()).then(() => {
-            copyBtn.textContent = 'Copied';
-            setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1600);
+          navigator.clipboard.writeText(wrap.textContent.trim()).then(() => {
+            copyBtn.innerHTML = checkIcon;
+            setTimeout(() => { copyBtn.innerHTML = copyIcon; }, 1600);
           });
         });
 
@@ -329,6 +338,7 @@
         pre.parentNode.replaceChild(wrap, pre);
         return;
       }
+
 
       try {
 
@@ -463,11 +473,13 @@
     speechSynthesis.speak(u);
   }
   
-  muteBtn.addEventListener('click', () => {
-    if ('speechSynthesis' in window) {
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#mute-btn') && 'speechSynthesis' in window) {
       speechSynthesis.cancel();
     }
   });
+
+
 
 
   function addModelMessagePlaceholder(){
