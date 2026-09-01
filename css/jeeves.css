@@ -288,6 +288,59 @@
   }
   .copy-btn:hover{ 
     color:#fff; border-color:#fff; }
+
+    .prose-copy-wrap{
+    margin:12px 0;
+    padding:14px 16px 32px;
+    border-radius:var(--radius);
+    border:1px solid rgba(0,0,0,0.08);
+    background: linear-gradient(135deg, #FFFF88 calc(100% - 22px), transparent 0);
+    color: slategray;
+    position:relative;
+    font-family:inherit;
+    font-size:0.95em;
+    line-height:1.55;
+    white-space:pre-wrap;
+    word-break:break-word;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+  }
+  .prose-copy-wrap::before{
+    content: "";
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    width: 32px;
+    height: 18px;
+    box-shadow: 3px 5px 8px rgba(0,0,0,0.22);
+    transform: rotate(4deg);
+    z-index: 0;
+  }
+  .prose-copy-wrap::after{
+    content: "";
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 0;
+    height: 0;
+    border-width: 0 0 22px 22px;
+    border-style: solid;
+    border-color: transparent transparent #dede6c transparent;
+    border-bottom-right-radius: 4px;
+    box-shadow: -2px -2px 3px rgba(0,0,0,0.1);
+    z-index: 1;
+  }
+  [data-theme="light"] .prose-copy-wrap{
+    background: linear-gradient(135deg, #FFFF88 calc(100% - 22px), transparent 0);
+  }
+  .prose-copy-wrap .copy-btn{
+    position:absolute;
+    bottom:10px;
+    right:26px;
+    color: var(--brass-bright);
+    z-index: 2;
+  }
+
+
   .code-wrap pre{
     margin:0;
     padding:12px 14px;
@@ -309,11 +362,11 @@
   }
 
   .code-wrap pre,
-pre code.hljs {
-  white-space: pre-wrap;
-  word-break: normal;
-  overflow-wrap: break-word;
-}
+  pre code.hljs {
+    white-space: pre-wrap;
+    word-break: normal;
+    overflow-wrap: break-word;
+  }
 
 
   .typing{

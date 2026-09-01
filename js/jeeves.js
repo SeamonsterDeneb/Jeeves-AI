@@ -304,11 +304,34 @@
 
     container.querySelectorAll('pre code').forEach(codeEl => {
       const pre = codeEl.parentElement;
-      if (!pre || !pre.parentNode || pre.parentNode.classList.contains('code-wrap')) return;
+      if (!pre || !pre.parentNode || pre.parentNode.classList.contains('code-wrap') || pre.parentNode.classList.contains('prose-copy-wrap')) return;
+
+      const langMatch = (codeEl.className || '').match(/language-(\S+)/);
+      const lang = langMatch ? langMatch[1].toLowerCase() : '';
+
+      if (lang === 'copy' || lang === 'draft' || lang === 'quote') {
+        const wrap = document.createElement('div');
+        wrap.className = 'prose-copy-wrap';
+        wrap.textContent = codeEl.textContent.trim();
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'copy-btn';
+        copyBtn.type = 'button';
+        copyBtn.textContent = 'Copy';
+        copyBtn.addEventListener('click', () => {
+          navigator.clipboard.writeText(wrap.textContent.replace(/^Copy/, '').trim()).then(() => {
+            copyBtn.textContent = 'Copied';
+            setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1600);
+          });
+        });
+
+        wrap.appendChild(copyBtn);
+        pre.parentNode.replaceChild(wrap, pre);
+        return;
+      }
+
       try {
-        let lang = '';
-        const langMatch = (codeEl.className || '').match(/language-(\S+)/);
-        if (langMatch) lang = langMatch[1];
+
         if (window.hljs) hljs.highlightElement(codeEl);
         const wrap = document.createElement('div');
         wrap.className = 'code-wrap';
@@ -519,7 +542,7 @@
       Over this:
       [existing code]`;
     } else if (state.convoType === 'general') {
-      instructions += `\n- You are in 'General Conversation' mode. If you provide any draft text (emails, messages, search terms, etc.), please present the final result within a code block for easy copying.`;
+      instructions += `\n- You are in 'General Conversation' mode. If you provide any draft text (emails, messages, search terms, quotes, etc.), please present the final result within a \`\`\`copy block for easy copying.`;
     } else if (state.convoType === 'cooking') {
       instructions += `\n- You are in 'Culinary Advice' mode. Always justify your recommendations with links to reputable cooking blogs or resources that support your suggestions. After explaining the suggestion, if there's enough information in the conversation to compose an entire recipe, put the entirety in a code block for easy copying`;
     } else if (state.convoType === 'research') {
