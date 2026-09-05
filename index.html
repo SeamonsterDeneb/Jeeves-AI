@@ -13,13 +13,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/base16/eighties.min.css">
-  <script src="js/marked.min.js"></script>
-  <script src="js/purify.min.js"></script>
-  <script src="js/highlight.min.js"></script>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="css/jeeves.css">
-  <script src="js/jeeves.js"></script>
-
 </head>
 <body>
   <header class="letterhead">
@@ -71,8 +66,9 @@
         <button type="button" class="img-thumb-remove" id="remove-img-btn" title="Remove image">&times;</button>
       </div>
     </div>
+    <label for="input">Instructions</label>
     <div class="composer-inner">
-      <textarea id="input" rows="1" placeholder="How may I be of service?"></textarea>
+      <textarea autofocus id="input" rows="1" placeholder="How may I be of service?"></textarea>
       <input type="file" id="file-input" style="display:none;" multiple>
       <div class="composer-actions">
         <button type="button" id="new-chat-btn" tabindex="0" class="icon-btn tooltip-btn" data-tooltip="New Conversation" title="New Conversation" aria-label="Start a new conversation" style="width:38px;height:38px;flex-shrink:0;">
@@ -197,6 +193,6 @@
   <script src="js/highlight.min.js"></script>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="css/jeeves.css">
-  <script src="js/jeeves.js"></script>
+  <script src="js/jeeves.js" defer></script>
 </body>
 </html>
