@@ -39,11 +39,11 @@
 
   <main id="chat"></main>
 
-  <div id="archive-overlay">
+  <div id="archive-overlay" role="dialog" aria-label="Archives" aria-modal="true">
     <div class="archive-header">
-      <h2>Conversations</h2>
-      <input type="text" id="search-archives" placeholder="Search..." style="background:var(--ink-panel-2); border:1px solid var(--hairline); border-radius:6px; color:var(--parchment); padding:4px 8px; font-size:13px; width:120px;">
-      <button class="icon-btn" id="refine-titles-btn" title="Tidy up archives" aria-label="Tidy up archives" style="font-size:12px;">
+      <h2>Archives</h2>
+      <input type="text" id="search-archives" placeholder="Search..." aria-label="Search archives" style="background:var(--ink-panel-2); border:1px solid var(--hairline); border-radius:6px; color:var(--parchment); padding:4px 8px; font-size:13px; width:120px;">
+      <button class="icon-btn" tabindex="0" id="refine-titles-btn" title="Tidy up archives" aria-label="Tidy up archives" style="font-size:12px;">
         <svg xmlns="http://w3.org" viewBox="0 0 100 100" width="100" height="100">
           <!-- Dustpan -->
           <path d="M47,49 C47,44.6 44.4,41 41.2,41 L38.8,41 C35.6,41 33,44.6 33,49 L33,56 L25,56 C23.3,56 22,57.3 22,59 L22,76 C22,77.7 23.3,79 25,79 L53,79 C54.7,79 56,77.7 56,76 L56,59 C56,57.3 54.7,56 53,56 L47,56 Z M37,20 C37,17.8 38.3,16 40,16 C41.7,16 43,17.8 43,20 L43,41 L37,41 Z M41,25 C41,24.4 39.5,24 39,24 C38.5,24 39,24.4 39,25 L39,29 C39,29.6 39.5,30 40,30 C40.5,30 41,29.6 41,29 Z" fill="#000000"/>
@@ -57,8 +57,8 @@
         </svg>
 
       </button>
-      <button class="icon-btn" id="close-archives">✕</button>
-
+      <button tabindex="0" id="archive-new-chat-btn" class="archive-btn" type="button" aria-label="Start new conversation">+</button>
+      <button tabindex="0" class="icon-btn" id="close-archives" aria-label="Close archives">✕</button>
     </div>
 
     <div id="archive-content" class="archive-list"></div>
@@ -75,20 +75,20 @@
       <textarea id="input" rows="1" placeholder="How may I be of service?"></textarea>
       <input type="file" id="file-input" style="display:none;" multiple>
       <div class="composer-actions">
-        <button type="button" id="new-chat-btn" class="icon-btn" title="New Chat" aria-label="Start a new conversation" style="width:38px;height:38px;flex-shrink:0;">
+        <button type="button" id="new-chat-btn" tabindex="0" class="icon-btn tooltip-btn" data-tooltip="New Conversation" title="New Conversation" aria-label="Start a new conversation" style="width:38px;height:38px;flex-shrink:0;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
         </button>
-        <button type="button" id="archive-btn" class="icon-btn" title="Conversations" aria-label="Browse past conversations" style="width:38px;height:38px;flex-shrink:0;">
+        <button type="button" id="archive-btn" tabindex="0" class="icon-btn tooltip-btn" title="Archives" data-tooltip="Archives" aria-label="Browse archives" style="width:38px;height:38px;flex-shrink:0;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/></svg>
         </button>
-        <button type="button" id="mic-btn" class="icon-btn" title="Voice input" aria-label="Voice input" style="width:38px;height:38px;flex-shrink:0;">
+        <button type="button" id="mic-btn" tabindex="0" class="icon-btn tooltip-btn" title="Voice input" data-tooltip="Voice input" aria-label="Voice input" style="width:38px;height:38px;flex-shrink:0;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
         </button>
-        <button type="button" id="mute-btn" class="icon-btn" title="Stop speaking" aria-label="Stop speaking" style="width:38px;height:38px;flex-shrink:0;">
+        <button type="button" id="mute-btn" tabindex="0" class="icon-btn tooltip-btn" title="Stop speaking" data-tooltip="Stop speaking" aria-label="Stop speaking" style="width:38px;height:38px;flex-shrink:0;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
         </button>
 
-              <div class="convo-wrap">
+        <div class="convo-wrap">
           <select id="convo-type" class="convo-select" style="width: 54px; transition: width 0.2s;" 
                   onfocus="this.style.width='190px'" 
                   onblur="this.style.width='54px'" 
@@ -101,15 +101,14 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute; right:8px; pointer-events:none; width:10px; height:10px; color:var(--mist);"><path d="m6 9 6 6 6-6"/></svg>
         </div>
 
-
-        <button type="button" id="attach-btn" class="icon-btn" title="Attach image" style="width:38px;height:38px;flex-shrink:0;">
-
+        <button type="button" id="attach-btn" tabindex="0" class="icon-btn tooltip-btn" data-tooltip="Attach file" title="Attach file" style="width:38px;height:38px;flex-shrink:0;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57a4 4 0 1 1 5.66 5.66l-8.59 8.58a2 2 0 0 1-2.83-2.83l7.88-7.88"/></svg>
         </button>
-        <button id="send-btn" title="Send" aria-label="Send message">
+        <button id="send-btn" class="tooltip-btn" data-tooltip="Send message" tabindex="0" title="Send" aria-label="Send message">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
         </button>
       </div>
+
     </div>
     <p class="hint">Enter to send · Shift+Enter for a new line</p>
   </footer>

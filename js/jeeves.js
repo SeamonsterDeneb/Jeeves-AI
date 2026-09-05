@@ -176,11 +176,12 @@
   
   function clearPendingImages(){
     pendingAttachments = [];
-    imgPreviewBar.innerHTML = '';
-    imgPreviewBar.classList.remove('show');
+    if (imgPreviewBar) {
+      imgPreviewBar.innerHTML = '';
+      imgPreviewBar.classList.remove('show');
+    }
     if (fileInput) fileInput.value = '';
   }
-  
   
   function handleFile(file){
     if (!file) return;
@@ -194,9 +195,12 @@
       const thumb = document.createElement('div');
       thumb.className = 'img-thumb-wrap';
       thumb.innerHTML = (attachment.type === 'image' ? `<img src="${attachment.dataUrl}" style="height:60px;border-radius:6px;border:1px solid var(--hairline);">` : `<span style="font-size:12px;padding:6px;background:var(--ink-panel-2);border:1px solid var(--hairline);border-radius:6px;">📄 ${attachment.fileName}</span>`) + `<button type="button" class="img-thumb-remove">&times;</button>`;
-      thumb.querySelector('button').onclick = () => { pendingAttachments = pendingAttachments.filter(a => a.id !== id); thumb.remove(); if (!pendingAttachments.length) imgPreviewBar.classList.remove('show'); };
-      imgPreviewBar.appendChild(thumb);
-      imgPreviewBar.classList.add('show');
+      thumb.querySelector('button').onclick = () => { pendingAttachments = pendingAttachments.filter(a => a.id !== id); thumb.remove(); if (!pendingAttachments.length && imgPreviewBar) imgPreviewBar.classList.remove('show'); };
+      if (imgPreviewBar) {
+        imgPreviewBar.appendChild(thumb);
+        imgPreviewBar.classList.add('show');
+      }
+
     };
     file.type.startsWith('image/') ? reader.readAsDataURL(file) : reader.readAsText(file);
   }
@@ -355,9 +359,9 @@
         copyBtn.addEventListener('click', () => {
           navigator.clipboard.writeText(codeEl.textContent).then(() => {
             copyBtn.textContent = 'Copied';
-            setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1600);
           });
         });
+
         head.appendChild(copyBtn);
         pre.parentNode.insertBefore(wrap, pre);
         wrap.appendChild(head);
@@ -377,15 +381,17 @@
   
   // ---------- Chat rendering ----------
   function scrollToBottom(){
-    chatEl.scrollTop = chatEl.scrollHeight;
+    if (chatEl) chatEl.scrollTop = chatEl.scrollHeight;
   }
   
   function clearChatDom(){
-    chatEl.innerHTML = '';
+    if (chatEl) chatEl.innerHTML = '';
   }
+
   
   function renderEmptyState(){
     clearChatDom();
+    if (!chatEl) return;
     const wrap = document.createElement('div');
     wrap.className = 'empty-state';
     wrap.innerHTML = `
@@ -434,7 +440,7 @@
       txtSpan.textContent = text;
       bubble.appendChild(txtSpan);
     }
-    chatEl.appendChild(row);
+    if (chatEl) chatEl.appendChild(row);
     scrollToBottom();
   }
   
@@ -446,8 +452,9 @@
     bubble.className = 'bubble';
     bubble.textContent = text;
     row.appendChild(bubble);
-    chatEl.appendChild(row);
+    if (chatEl) chatEl.appendChild(row);
     scrollToBottom();
+
   }
   
   function getJeevesVoice() {
@@ -494,7 +501,7 @@
     ];
     const phrase = phrases[Math.floor(Math.random() * phrases.length)];
     bubble.innerHTML = `<span style="font-family:var(--font-ui); font-size:14px; color:var(--mist);">${phrase}</span>`;    
-    chatEl.appendChild(row);
+    if (chatEl) chatEl.appendChild(row);
     scrollToBottom();
     return { row, bubble };
   }
@@ -536,7 +543,7 @@
           const meta = buildMetaLine(turn.usage, turn.model);
           if (meta) bubble.appendChild(meta);
         }
-        chatEl.appendChild(row);
+        if (chatEl) chatEl.appendChild(row);
       }
     });
     scrollToBottom();
@@ -853,6 +860,7 @@
   }
 
   function autoResizeInput(){
+    if (!inputEl) return;
     const maxHeight = Math.round(window.innerHeight * 0.45);
     inputEl.style.height = 'auto';
     const newHeight = Math.min(inputEl.scrollHeight, maxHeight);
@@ -870,7 +878,7 @@
       return;
     }
 
-    if (chatEl.querySelector('.empty-state')) clearChatDom();
+    if (chatEl && chatEl.querySelector('.empty-state')) clearChatDom();
 
     const currentAttachments = [...pendingAttachments];
     clearPendingImages();
@@ -1017,7 +1025,7 @@
 
     } catch (err) {
       const errDiv = document.createElement('div');
-      errDiv.style.color = '#e6b3ba';
+      errDiv.style.color = '#942735';
       errDiv.style.marginTop = '10px';
       errDiv.style.paddingTop = '10px';
       errDiv.style.borderTop = '1px solid var(--claret)';
@@ -1141,6 +1149,8 @@
     state.history = [];
     persistHistory();
     replayHistory();
+    archiveOverlay?.classList.remove('open');
+
   }
 
 
@@ -1171,12 +1181,13 @@
       const stamp = c.updatedAt ? new Date(c.updatedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'No date recorded';
       row.innerHTML = `
         <div class="archive-title-wrap">
-          <input type="text" class="archive-input" value="${escapeHtml(c.title)}">
+          <input type="text" class="archive-input" value="${escapeHtml(c.title)}" aria-label="Conversation title">
           <div class="archive-timestamp">${escapeHtml(stamp)}</div>
         </div>
-        <button class="archive-btn delete-btn" type="button" style="background:var(--claret); color:white; margin-left:4px;">✕</button>
-        <button class="archive-btn open-btn" type="button">${c.id === state.activeId ? 'Current' : 'Open'}</button>
+        <button tabindex="0" class="archive-btn delete-btn tooltip-btn" data-tooltip="Delete conversation" type="button" aria-label="Delete conversation" style="background:var(--claret); color:white; margin-left:4px;">✕</button>
+        <button tabindex="0" class="archive-btn open-btn tooltip-btn" data-tooltip="Open conversation" type="button" aria-label="${c.id === state.activeId ? 'Current conversation' : 'Open conversation'}">${c.id === state.activeId ? 'Current' : 'Open'}</button>
       `;
+
       row.querySelector('.archive-input').addEventListener('blur', (e) => renameConversation(c.id, e.target.value));
       row.querySelector('.delete-btn').addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1191,10 +1202,14 @@
       archiveContent.appendChild(row);
     });
     archiveOverlay.classList.add('open');
+    const searchInput = document.getElementById('search-archives');
+    if (searchInput) {
+      searchInput.value = '';
+      searchInput.focus();
+    }
   }
 
-
-  document.getElementById('search-archives').addEventListener('input', (e) => {
+  document.getElementById('search-archives')?.addEventListener('input', (e) => {
     const term = e.target.value.toLowerCase();
     const rows = Array.from(document.querySelectorAll('.archive-row'));
     if (!term) {
@@ -1234,87 +1249,96 @@
     rows.filter(r => !results.find(res => res.row === r)).forEach(r => r.style.display = 'none');
   });
 
+  document.getElementById('new-chat-btn')?.addEventListener('click', startNewChat);
+  document.getElementById('archive-btn')?.addEventListener('click', renderArchives);
+  function closeArchives(){
+    archiveOverlay?.classList.remove('open');
+    document.getElementById('archive-btn')?.focus();
+  }
 
+  closeArchivesBtn?.addEventListener('click', closeArchives);
+  archiveOverlay?.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      closeArchives();
+    }
+  });
 
-  
-  
-  
-  document.getElementById('new-chat-btn').addEventListener('click', startNewChat);
-  document.getElementById('archive-btn').addEventListener('click', renderArchives);
-  closeArchivesBtn.addEventListener('click', () => archiveOverlay.classList.remove('open'));
-  document.getElementById('refine-titles-btn').addEventListener('click', refineAllTitles);
+  document.getElementById('refine-titles-btn')?.addEventListener('click', refineAllTitles);
+  document.getElementById('archive-new-chat-btn')?.addEventListener('click', startNewChat);
   
   // ---------- Event wiring ----------
 
-  settingsBtn.addEventListener('click', openModal);
-  closeModalBtn.addEventListener('click', closeModal);
-  modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
-  saveSettingsBtn.addEventListener('click', saveSettings);
-  clearHistoryBtn.addEventListener('click', clearConversation);
+  settingsBtn?.addEventListener('click', openModal);
+  closeModalBtn?.addEventListener('click', closeModal);
+  modalOverlay?.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
+  saveSettingsBtn?.addEventListener('click', saveSettings);
+  clearHistoryBtn?.addEventListener('click', clearConversation);
 
-  toggleKeyBtn.addEventListener('click', () => {
-    const isPw = apiKeyInput.type === 'password';
-    apiKeyInput.type = isPw ? 'text' : 'password';
+  toggleKeyBtn?.addEventListener('click', () => {
+    const isPw = apiKeyInput?.type === 'password';
+    if (apiKeyInput) apiKeyInput.type = isPw ? 'text' : 'password';
     toggleKeyBtn.textContent = isPw ? 'Hide' : 'Show';
   });
 
-  verifyModelBtn.addEventListener('click', verifySelectedModel);
+  verifyModelBtn?.addEventListener('click', verifySelectedModel);
 
   document.querySelectorAll('input[name="theme"]').forEach(radio => {
     radio.addEventListener('change', (e) => applyTheme(e.target.value));
   });
 
-  modelSelect.addEventListener('change', () => {
-
-
+  modelSelect?.addEventListener('change', () => {
     loadPricingFieldsForModel(modelSelect.value);
   });
 
-  freeTierCheck.addEventListener('change', () => {
-    pricingInputsWrap.style.display = freeTierCheck.checked ? 'none' : 'flex';
+  freeTierCheck?.addEventListener('change', () => {
+    if (pricingInputsWrap) pricingInputsWrap.style.display = freeTierCheck.checked ? 'none' : 'flex';
     updateSessionTotalNote();
   });
-  priceInputEl.addEventListener('input', () => {
-    if (modelSelect.value) {
+  priceInputEl?.addEventListener('input', () => {
+    if (modelSelect?.value) {
       state.pricing[modelSelect.value] = state.pricing[modelSelect.value] || {};
       state.pricing[modelSelect.value].inputPerM = priceInputEl.value;
       state.pricing[modelSelect.value].free = false;
     }
     updateSessionTotalNote();
   });
-  priceOutputEl.addEventListener('input', () => {
-    if (modelSelect.value) {
+  priceOutputEl?.addEventListener('input', () => {
+    if (modelSelect?.value) {
       state.pricing[modelSelect.value] = state.pricing[modelSelect.value] || {};
       state.pricing[modelSelect.value].outputPerM = priceOutputEl.value;
       state.pricing[modelSelect.value].free = false;
     }
     updateSessionTotalNote();
   });
-  document.getElementById('convo-type').addEventListener('change', (e) => {
+
+  document.getElementById('convo-type')?.addEventListener('change', (e) => {
     state.convoType = e.target.value;
   });
 
   let fetchDebounce;
-  apiKeyInput.addEventListener('input', () => {
+  apiKeyInput?.addEventListener('input', () => {
     clearTimeout(fetchDebounce);
     const val = apiKeyInput.value.trim();
     if (!val) {
-      modelSelect.disabled = true;
-      modelSelect.innerHTML = '<option value="">Enter a valid API key to fetch available models…</option>';
+      if (modelSelect) {
+        modelSelect.disabled = true;
+        modelSelect.innerHTML = '<option value="">Enter a valid API key to fetch available models…</option>';
+      }
       setStatus('', '');
       return;
     }
     fetchDebounce = setTimeout(() => fetchModels(val, state.model), 600);
   });
 
-  sendBtn.addEventListener('click', sendMessage);
-  inputEl.addEventListener('keydown', (e) => {
+  sendBtn?.addEventListener('click', sendMessage);
+  inputEl?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
   });
-  inputEl.addEventListener('input', autoResizeInput);
+  inputEl?.addEventListener('input', autoResizeInput);
   autoResizeInput();
 
 
