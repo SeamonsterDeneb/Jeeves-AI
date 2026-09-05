@@ -156,6 +156,7 @@
   const modelSelect = document.getElementById('model-select');
   const saveSettingsBtn = document.getElementById('save-settings-btn');
   const clearHistoryBtn = document.getElementById('clear-history-btn');
+  const refreshAppBtn = document.getElementById('refresh-app-btn');
   const statusArea = document.getElementById('status-area');
   const verifyModelBtn = document.getElementById('verify-model-btn');
   const hiddenModelsNote = document.getElementById('hidden-models-note');
@@ -841,6 +842,31 @@
     }
   }
 
+  async function refreshAppCache(){
+    if (refreshAppBtn) {
+      refreshAppBtn.disabled = true;
+      refreshAppBtn.textContent = 'Updating…';
+    }
+    try {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const registration of registrations) {
+          await registration.unregister();
+        }
+      }
+      if ('caches' in window) {
+        const cacheKeys = await caches.keys();
+        await Promise.all(cacheKeys.map(key => caches.delete(key)));
+      }
+    } catch (err) {
+      console.warn('Jeeves: Unable to purge all caches', err);
+    }
+    sessionStorage.setItem('jeeves_just_updated', '1');
+    const cleanUrl = window.location.origin + window.location.pathname;
+    window.location.replace(`${cleanUrl}?t=${Date.now()}`);
+  }
+
+
   function clearConversation(){
     state.history = [];
     persistHistory();
@@ -1274,6 +1300,7 @@
   modalOverlay?.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
   saveSettingsBtn?.addEventListener('click', saveSettings);
   clearHistoryBtn?.addEventListener('click', clearConversation);
+  refreshAppBtn?.addEventListener('click', refreshAppCache);
 
   toggleKeyBtn?.addEventListener('click', () => {
     const isPw = apiKeyInput?.type === 'password';
@@ -1344,6 +1371,10 @@
 
   // ---------- Init ----------
   replayHistory();
+  if (sessionStorage.getItem('jeeves_just_updated')) {
+    sessionStorage.removeItem('jeeves_just_updated');
+    addSystemNote('Application cache successfully purged and latest files loaded.');
+  }
   if (!state.apiKey) {
     setTimeout(openModal, 300);
   }
