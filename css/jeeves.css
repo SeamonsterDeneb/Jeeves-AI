@@ -847,7 +847,29 @@ pointer-events:none;
   .convo-wrap{ 
     position:relative; margin-left:auto; display:flex; align-items:center; 
   }
+  .footnote-ref {
+    color: var(--brass-bright);
+    text-decoration: none;
+    cursor: pointer;
+    font-weight: 600;
+    padding: 0 1px;
+    border-radius: 3px;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+  .footnote-ref:hover, .footnote-ref:focus-visible {
+    background: rgba(184, 146, 90, 0.22);
+    outline: none;
+  }
+  .footnote-highlight {
+    animation: footnote-glow 2s ease-out;
+    border-radius: 4px;
+  }
+  @keyframes footnote-glow {
+    0% { background-color: rgba(184, 146, 90, 0.45); }
+    100% { background-color: transparent; }
+  }
   .bubble h4 { border-top:1px solid var(--hairline); padding-top:10px; margin:10px 0 5px; }
+
 
   #convo-type {
     -webkit-appearance: none;

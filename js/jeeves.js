@@ -302,12 +302,65 @@
       node.parentNode.replaceChild(span, node);
     });
 ;
-    // Convert [1] to superscript links
-    container.innerHTML = container.innerHTML.replace(/\[(\d+)\]/g, '<sup id="cite-$1" style="color:var(--brass-bright);">[$1]</sup>');
+    // Robustly extract and format the References section into an <ol> with unique id per item
+    const refHeaders = Array.from(container.querySelectorAll('h1, h2, h3, h4, p')).filter(el => {
+      const txt = el.textContent.trim();
+      return /^#*\s*references\b/i.test(txt) || /^references\b/i.test(el.querySelector('strong')?.textContent?.trim() || '');
+    });
 
-        container.innerHTML = container.innerHTML.replace(/<p><strong>References<\/strong><br>(.*?)<\/p>/gs, (match, content) => {
-        const items = content.split('<br>').map(item => `<li>${item}</li>`).join('');
-        return `<h4>References</h4><ol style="padding-left:22px;">${items}</ol>`;
+    refHeaders.forEach(headerEl => {
+      let next = headerEl.nextElementSibling;
+      let refEntries = [];
+      const nodesToRemove = [];
+
+      while (next) {
+        if (next.tagName === 'OL' || next.tagName === 'UL') {
+          next.querySelectorAll('li').forEach(li => refEntries.push(li.innerHTML));
+          nodesToRemove.push(next);
+          break;
+        } else if (next.tagName === 'P') {
+          const lines = next.innerHTML.split(/<br\s*\/?>|\n/).map(l => l.trim()).filter(Boolean);
+          refEntries.push(...lines);
+          nodesToRemove.push(next);
+          next = next.nextElementSibling;
+        } else {
+          break;
+        }
+      }
+
+      if (refEntries.length > 0) {
+        nodesToRemove.forEach(n => n.remove());
+        const ol = document.createElement('ol');
+        ol.style.paddingLeft = '22px';
+        ol.style.margin = '0 0 10px';
+
+        refEntries.forEach((entryHtml, idx) => {
+          const num = idx + 1;
+          const cleanEntry = entryHtml.replace(/^\[?\d+\]?\.?\s*/, '');
+          const li = document.createElement('li');
+          li.id = `ref-${num}`;
+          li.innerHTML = cleanEntry;
+          ol.appendChild(li);
+        });
+
+        headerEl.insertAdjacentElement('afterend', ol);
+      }
+    });
+
+    // Convert in-text [1] citations into superscript anchor links (ignoring any brackets inside links)
+    container.innerHTML = container.innerHTML.replace(/(?<!data-ref=["'])(?<!id=["']ref-)(?<!#ref-)(?<!\[)\[(\d+)\](?!\()/g, '<sup style="color:var(--brass-bright);"><a href="#ref-$1" class="footnote-ref" data-ref="$1">$1</a></sup>');
+
+    // Format Ethos styling and ensure external links open in a new tab without altering footnote links
+    container.querySelectorAll('li, p').forEach(el => {
+      if (el.innerHTML.includes('(Ethos:')) {
+        el.innerHTML = el.innerHTML.replace(/\(Ethos:([^)]+)\)/g, '<small style="color:var(--mist);">(Ethos:$1)</small>');
+      }
+    });
+
+    container.querySelectorAll('a').forEach(link => {
+      if (!link.classList.contains('footnote-ref') && !link.getAttribute('href')?.startsWith('#') && !link.querySelector('.sr-only')) {
+        addNewTabAffordance(link);
+      }
     });
 
     container.querySelectorAll('pre code').forEach(codeEl => {
@@ -370,12 +423,22 @@
       } catch(e){ console.warn('Jeeves: skipped code block wrap', e); }
     });
 
-        container.querySelectorAll('ol li').forEach(li => {
-        li.innerHTML = li.innerHTML.replace(/\(Ethos:([^)]+)\)/, '<small style="color:var(--mist);">Ethos:$1</small>');
-        const link = li.querySelector('a');
-        if (link && !link.querySelector('.sr-only')) addNewTabAffordance(link);
+    // Attach click handlers to footnote links
+    container.querySelectorAll('.footnote-ref').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const refNum = link.getAttribute('data-ref');
+        const target = container.querySelector(`#ref-${refNum}`);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          target.classList.remove('footnote-highlight');
+          void target.offsetWidth;
+          target.classList.add('footnote-highlight');
+        }
+      });
     });
   }
+
 
 
   
@@ -566,8 +629,7 @@
     } else if (state.convoType === 'cooking') {
       instructions += `\n- You are in 'Culinary Advice' mode. Always justify your recommendations with links to reputable cooking blogs or resources that support your suggestions. After explaining the suggestion, if there's enough information in the conversation to compose an entire recipe, put the entirety in a code block for easy copying`;
     } else if (state.convoType === 'research') {
-      instructions += `\n- You are in 'Research Assistance' mode. Focus on clear, verifiable citations. In 'Research Assistance' mode, cite every claim with a superscript footnote like [1]. At the end of the response, include a 'References' section. Format each reference as: [1] (Ethos: [Brief description of source reliability]) [Citation Title](URL). If quoting, include the quote in the reference line.
-`;
+      instructions += `\n- You are in 'Research Assistance' mode. Focus on clear, verifiable citations. In 'Research Assistance' mode, cite claims with footnotes like [1]. At the end of the response, include a '### References' section formatted as a numbered markdown list (e.g. 1. (Ethos: ...) [Title](URL)). If quoting, include the quote in the reference line.\n`;
     }
     return instructions;
   }
