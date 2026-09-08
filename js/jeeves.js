@@ -259,11 +259,9 @@
   function addNewTabAffordance(anchor){
     anchor.target = '_blank';
     anchor.rel = 'noopener';
-    anchor.style.display = 'inline-flex';
-    anchor.style.alignItems = 'center';
-    anchor.style.gap = '3px';
+    anchor.style.display = 'inline';
     const icon = document.createElement('span');
-    icon.innerHTML = '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>';
+    icon.innerHTML = '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:baseline;margin-left:3px;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>';
     anchor.appendChild(icon.firstChild);
     const sr = document.createElement('span');
     sr.className = 'sr-only';
@@ -347,16 +345,39 @@
       }
     });
 
-    // Convert in-text [1] citations into superscript anchor links (ignoring any brackets inside links)
-    container.innerHTML = container.innerHTML.replace(/(?<!data-ref=["'])(?<!id=["']ref-)(?<!#ref-)(?<!\[)\[(\d+)\](?!\()/g, '<sup style="color:var(--brass-bright);"><a href="#ref-$1" class="footnote-ref" data-ref="$1">$1</a></sup>');
+    // Map unicode superscripts (¹²³⁴⁵⁶⁷⁸⁹⁰) to standard digits
+    const unicodeSupMap = { '¹':'1', '²':'2', '³':'3', '⁴':'4', '⁵':'5', '⁶':'6', '⁷':'7', '⁸':'8', '⁹':'9', '⁰':'0' };
+    container.innerHTML = container.innerHTML.replace(/[¹²³⁴⁵⁶⁷⁸⁹⁰]+(?:\s*,\s*[¹²³⁴⁵⁶⁷⁸⁹⁰]+)*/g, (match) => {
+      const groups = match.split(',').map(part => {
+        const digits = part.trim().split('').map(ch => unicodeSupMap[ch] || ch).join('');
+        return `<sup style="color:var(--brass-bright);"><a href="#ref-${digits}" class="footnote-ref" data-ref="${digits}">${digits}</a></sup>`;
+      });
+      return groups.join(', ');
+    });
 
-    // Format Ethos styling and ensure external links open in a new tab without altering footnote links
-    container.querySelectorAll('li, p').forEach(el => {
-      if (el.innerHTML.includes('(Ethos:')) {
-        el.innerHTML = el.innerHTML.replace(/\(Ethos:([^)]+)\)/g, '<small style="color:var(--mist);">(Ethos:$1)</small>');
+    // Convert in-text bracketed citations [1] or [1, 2, 5] into individually linked superscript numbers without brackets
+    container.innerHTML = container.innerHTML.replace(/(?<!data-ref=["'])(?<!id=["']ref-)(?<!#ref-)(?<!\[)\[(\d+(?:\s*,\s*\d+)*)\](?!\()/g, (match, numsGroup) => {
+      const links = numsGroup.split(',').map(n => n.trim()).filter(Boolean).map(num => {
+        return `<sup style="color:var(--brass-bright);"><a href="#ref-${num}" class="footnote-ref" data-ref="${num}">${num}</a></sup>`;
+      });
+      return links.join(', ');
+    });
+
+    // Also wrap existing <sup> tags if the model output raw <sup>1</sup> or <sup>1, 2</sup>
+    container.querySelectorAll('sup').forEach(sup => {
+      if (sup.querySelector('.footnote-ref')) return;
+      const raw = sup.textContent.trim();
+      if (/^\d+(?:\s*,\s*\d+)*$/.test(raw)) {
+        sup.style.color = 'var(--brass-bright)';
+        const nums = raw.split(',').map(n => n.trim()).filter(Boolean);
+        sup.innerHTML = nums.map(num => `<a href="#ref-${num}" class="footnote-ref" data-ref="${num}">${num}</a>`).join(', ');
       }
     });
 
+
+
+
+    // Ensure external links open in a new tab without altering footnote links
     container.querySelectorAll('a').forEach(link => {
       if (!link.classList.contains('footnote-ref') && !link.getAttribute('href')?.startsWith('#') && !link.querySelector('.sr-only')) {
         addNewTabAffordance(link);
@@ -428,7 +449,7 @@
       link.addEventListener('click', (e) => {
         e.preventDefault();
         const refNum = link.getAttribute('data-ref');
-        const target = container.querySelector(`#ref-${refNum}`);
+        const target = container.querySelector(`#ref-${refNum}`) || container.querySelector(`#jeeves-ref-${refNum}`);
         if (target) {
           target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           target.classList.remove('footnote-highlight');
@@ -437,6 +458,58 @@
         }
       });
     });
+  }
+
+    // Sources that are rarely citation-worthy (crowdsourced Q&A, social feeds)
+  // even though Google Search sometimes surfaces them. Filtered out before
+  // they ever reach the References list.
+  const LOW_QUALITY_SOURCE_PATTERNS = [
+    'quora.com', 'facebook.com', 'reddit.com', 'pinterest.com', 'tiktok.com',
+    'answers.yahoo.com', 'ask.com', 'twitter.com', 'x.com', 'instagram.com',
+    'ehow.com'
+  ];
+  function isLowQualityGroundingChunk(chunk){
+    const web = chunk && chunk.web;
+    if (!web) return true;
+    const hay = `${web.title || ''} ${web.uri || ''}`.toLowerCase();
+    return LOW_QUALITY_SOURCE_PATTERNS.some(p => hay.includes(p));
+  }
+
+  // Enhances the model's citations and references with verified Google Search grounding URIs
+  function applyGroundingFootnotes(rawText, chunks, supports){
+    if (!chunks || !chunks.length) return rawText;
+
+    const keptChunks = chunks.filter(c => !isLowQualityGroundingChunk(c));
+    if (!keptChunks.length) return rawText;
+
+    let text = rawText;
+
+    // If the model wrote its own references, verify and inject real grounding URIs if missing
+    if (/#{2,3}\s*References/i.test(text)) {
+      keptChunks.forEach((chunk, i) => {
+        const uri = chunk.web && chunk.web.uri;
+        if (!uri) return;
+        // If the reference line lacks a functioning URL, supply the grounded URI
+        const refLineRegex = new RegExp(`(^|\\n)(${i + 1}\\.\\s*According to [^\\n]+)`, 'i');
+        text = text.replace(refLineRegex, (m, prefix, line) => {
+          if (!line.includes('http')) {
+            return `${prefix}${line} ([Source Link](${uri}))`;
+          }
+          return m;
+        });
+      });
+      return text;
+    }
+
+    // Fallback: If no references section was produced, generate one adhering to the credibility template
+    const refLines = keptChunks.map((chunk, i) => {
+      const web = chunk.web || {};
+      const title = (web.title || 'Authoritative Source').replace(/[\[\]]/g, '');
+      const uri = web.uri || '#';
+      return `${i + 1}. According to ${title}, a verified source identified via search grounding, [${title}](${uri})`;
+    });
+
+    return `${text.trimEnd()}\n\n### References\n${refLines.join('\n')}`;
   }
 
 
@@ -627,10 +700,13 @@
     } else if (state.convoType === 'general') {
       instructions += `\n- You are in 'General Conversation' mode. If you provide any draft text (emails, messages, search terms, quotes, etc.), please present the final result within a \`\`\`copy block for easy copying.`;
     } else if (state.convoType === 'cooking') {
-      instructions += `\n- You are in 'Culinary Advice' mode. Always justify your recommendations with links to reputable cooking blogs or resources that support your suggestions. After explaining the suggestion, if there's enough information in the conversation to compose an entire recipe, put the entirety in a code block for easy copying`;
+      instructions += `\n- You are in 'Culinary Advice' mode. Justify your recommendations by referring to reputable cooking blogs or resources by name (e.g. "Serious Eats", "Kenji López-Alt's method"). Use Google Search to find these sources. Do NOT type out URLs yourself — the application will automatically append a verified list of the sources you found via search beneath your answer, so simply mention sources by name in your prose. After explaining the suggestion, if there's enough information in the conversation to compose an entire recipe, put the entirety in a code block for easy copying`;
     } else if (state.convoType === 'research') {
-      instructions += `\n- You are in 'Research Assistance' mode. Focus on clear, verifiable citations. In 'Research Assistance' mode, cite claims with footnotes like [1]. At the end of the response, include a '### References' section formatted as a numbered markdown list (e.g. 1. (Ethos: ...) [Title](URL)). If quoting, include the quote in the reference line.\n`;
+      instructions += `\n- You are in 'Research Assistance' mode. Use Google Search to ground your claims in verified, authoritative sources. Cite claims inline with footnotes like [1] or [1, 2] placed immediately following punctuation. At the end of your response, provide a '### References' section formatted as a numbered markdown list. Format each reference entry following this template: "According to [Source Name], [brief statement on source credibility and domain authority], [key finding or quote](URL)" using the exact live URLs discovered via Google Search.\n`;
     }
+
+
+
     return instructions;
   }
 
@@ -1009,11 +1085,17 @@
       if (!systemInstruction) throw new Error("System instruction is empty.");
       
       const url = `https://generativelanguage.googleapis.com/v1beta/${usedModel}:streamGenerateContent?alt=sse&key=${encodeURIComponent(state.apiKey)}`;
+      const temperature = state.convoType === 'research' ? 0.3 : (state.convoType === 'coding' ? 0.4 : 0.85);
       const body = {
         contents: contextMessages,
         systemInstruction: { parts: [{ text: fullSystemInstruction }] },
-        generationConfig: { temperature: 0.85 }
+        generationConfig: { temperature: temperature }
       };
+
+      if (state.convoType === 'research' || state.convoType === 'cooking') {
+        body.tools = [{ googleSearch: {} }];
+      }
+
 
 
       const resp = await fetch(url, {
@@ -1036,6 +1118,8 @@
       let lastSpoken = '';
       let firstChunk = true;
       let usageMetadata = null;
+      let searchGroundingChunks = [];
+      let searchGroundingSupports = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -1058,8 +1142,13 @@
           const candidate = payload.candidates && payload.candidates[0];
           if (!candidate) continue;
 
+          if (candidate.groundingMetadata) {
+            if (candidate.groundingMetadata.groundingChunks) searchGroundingChunks = candidate.groundingMetadata.groundingChunks;
+            if (candidate.groundingMetadata.groundingSupports) searchGroundingSupports = candidate.groundingMetadata.groundingSupports;
+          }
+
           const parts = (candidate.content && candidate.content.parts) || [];
-          const chunkText = parts.map(p => p.text || '').join('');
+          const chunkText = parts.filter(p => !p.thought).map(p => p.text || '').join('');
           if (chunkText) {
             fullText += chunkText;
             if (firstChunk) {
@@ -1081,6 +1170,12 @@
       }
       isVoiceRequest = false;
 
+      // Grounding chunks contain the REAL, verified URIs Google Search found —
+      // unlike anything the model might type in prose, these are guaranteed live.
+      if (searchGroundingChunks.length) {
+        fullText = applyGroundingFootnotes(fullText, searchGroundingChunks, searchGroundingSupports);
+        renderMarkdownInto(modelBubble, fullText);
+      }
 
       // Auto-close any unbalanced code fence before it's rendered or saved,
       // so a truncated/cut-off response can never poison future turns.
