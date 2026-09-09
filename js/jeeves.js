@@ -345,22 +345,61 @@
       }
     });
 
+    // Despite instructions, the model occasionally writes an inline citation as a
+    // real hyperlink straight to the source (e.g. "claim [1](https://example.com)")
+    // instead of a bare [1] — likely echoing the linked-URL style used in the
+    // References entries themselves. marked() turns that into a plain <a> before any
+    // of the bracket/sup handling below ever sees it, so it would otherwise render as
+    // an unstyled inline link rather than a footnote. Recognize it by matching its
+    // href against a URL already present in the References list, and restyle it to
+    // match the rest of the footnotes.
+    const refUrlToNum = {};
+    container.querySelectorAll('ol li[id^="ref-"]').forEach(li => {
+      const num = li.id.slice(4);
+      const link = li.querySelector('a[href]');
+      if (link) refUrlToNum[link.getAttribute('href')] = num;
+    });
+    if (Object.keys(refUrlToNum).length) {
+      container.querySelectorAll('a[href]').forEach(a => {
+        if (a.classList.contains('footnote-ref')) return;
+        const num = refUrlToNum[a.getAttribute('href')];
+        if (num && /^\d+$/.test(a.textContent.trim())) {
+          const sup = document.createElement('sup');
+          sup.style.color = 'var(--brass-bright)';
+          sup.innerHTML = `<a href="#ref-${num}" class="footnote-ref" data-ref="${num}">${num}</a>`;
+          a.replaceWith(sup);
+        }
+      });
+    }
+
     // Map unicode superscripts (¹²³⁴⁵⁶⁷⁸⁹⁰) to standard digits
     const unicodeSupMap = { '¹':'1', '²':'2', '³':'3', '⁴':'4', '⁵':'5', '⁶':'6', '⁷':'7', '⁸':'8', '⁹':'9', '⁰':'0' };
     container.innerHTML = container.innerHTML.replace(/[¹²³⁴⁵⁶⁷⁸⁹⁰]+(?:\s*,\s*[¹²³⁴⁵⁶⁷⁸⁹⁰]+)*/g, (match) => {
       const groups = match.split(',').map(part => {
         const digits = part.trim().split('').map(ch => unicodeSupMap[ch] || ch).join('');
-        return `<sup style="color:var(--brass-bright);"><a href="#ref-${digits}" class="footnote-ref" data-ref="${digits}">${digits}</a></sup>`;
+        return `<a href="#ref-${digits}" class="footnote-ref" data-ref="${digits}">${digits}</a>`;
       });
-      return groups.join(', ');
+      return `<sup style="color:var(--brass-bright);">${groups.join(', ')}</sup>`;
     });
 
-    // Convert in-text bracketed citations [1] or [1, 2, 5] into individually linked superscript numbers without brackets
+    // The model sometimes cites multiple sources for one claim as separate adjacent
+    // groups — [1][2], [1] [2], or [1], [2] — instead of one grouped [1, 2]. Merge
+    // any such run into a single bracket group first, so it becomes one <sup> below
+    // with a superscript comma between the numbers, rather than two <sup>s split by
+    // a plain-text comma. (Real markdown links like [1](url) aren't touched: the
+    // "(" that follows breaks the run, since this only matches "]" runs immediately
+    // followed by another "[".)
+    container.innerHTML = container.innerHTML.replace(/\[(\d+(?:\s*,\s*\d+)*)\](?:\s*,?\s*\[(\d+(?:\s*,\s*\d+)*)\])+/g, (match) => {
+      const nums = match.match(/\d+/g);
+      return `[${nums.join(', ')}]`;
+    });
+
+    // Also handle bracketed citations [1] or [1, 2, 5] if generated
     container.innerHTML = container.innerHTML.replace(/(?<!data-ref=["'])(?<!id=["']ref-)(?<!#ref-)(?<!\[)\[(\d+(?:\s*,\s*\d+)*)\](?!\()/g, (match, numsGroup) => {
       const links = numsGroup.split(',').map(n => n.trim()).filter(Boolean).map(num => {
-        return `<sup style="color:var(--brass-bright);"><a href="#ref-${num}" class="footnote-ref" data-ref="${num}">${num}</a></sup>`;
+        return `<a href="#ref-${num}" class="footnote-ref" data-ref="${num}">${num}</a>`;
       });
-      return links.join(', ');
+      return `<sup style="color:var(--brass-bright);">${links.join(', ')}</sup>`;
     });
 
     // Also wrap existing <sup> tags if the model output raw <sup>1</sup> or <sup>1, 2</sup>
@@ -373,7 +412,6 @@
         sup.innerHTML = nums.map(num => `<a href="#ref-${num}" class="footnote-ref" data-ref="${num}">${num}</a>`).join(', ');
       }
     });
-
 
 
 
@@ -689,7 +727,7 @@
   // ---------- Persona ----------
   function buildSystemInstruction(){
     const h = (state.honorific || 'Sir').trim() || 'Sir';
-    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Whenever you quote from great literature or notable historical figures, always wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [[QUOTE "the exact quoted text"|Author Name]]. Do not add your own quotation marks or a separate reference note around it.`;
+    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Whenever you quote from great literature or notable historical figures, always wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [[QUOTE "the exact quoted text"|Author Name]]. Do not add your own quotation marks or a separate reference note around it. Whenever you cite a source inline, use ONLY a bare numeric marker in square brackets immediately after the relevant text (e.g. [1]) — NEVER format an inline marker as a markdown link such as [1](URL); real URLs belong only in the References list, not on the inline marker itself. If a single claim draws on more than one source, combine every number into one bracket group separated by commas, like [1, 2, 4] — never write separate adjacent groups such as [1][2] or [1], [2].`;
 
     if (state.convoType === 'coding') {
       instructions += `\n- You are in 'Coding Help' mode. ALWAYS use small, highly targeted replacements. Favor a micro-replacement strategy over replacing large blocks. Ensure all code blocks, commands, or file paths remain clean and syntactically precise. You must use this pattern for modifications:
@@ -702,7 +740,7 @@
     } else if (state.convoType === 'cooking') {
       instructions += `\n- You are in 'Culinary Advice' mode. Justify your recommendations by referring to reputable cooking blogs or resources by name (e.g. "Serious Eats", "Kenji López-Alt's method"). Use Google Search to find these sources. Do NOT type out URLs yourself — the application will automatically append a verified list of the sources you found via search beneath your answer, so simply mention sources by name in your prose. After explaining the suggestion, if there's enough information in the conversation to compose an entire recipe, put the entirety in a code block for easy copying`;
     } else if (state.convoType === 'research') {
-      instructions += `\n- You are in 'Research Assistance' mode. Use Google Search to ground your claims in verified, authoritative sources. Cite claims inline with footnotes like [1] or [1, 2] placed immediately following punctuation. At the end of your response, provide a '### References' section formatted as a numbered markdown list. Format each reference entry following this template: "According to [Source Name], [brief statement on source credibility and domain authority], [key finding or quote](URL)" using the exact live URLs discovered via Google Search.\n`;
+      instructions += `\n- You are in 'Research Assistance' mode. Use Google Search to ground your claims in verified, authoritative sources. Cite every claim inline with a footnote marker (following the bare-bracket rule above) placed immediately after the relevant punctuation. At the end of your response, provide a '### References' section formatted as a numbered markdown list, one entry per footnote number in order. Format each reference entry as: "According to [Source Name], [brief statement on source credibility and domain authority], " followed immediately by the key finding itself written AS the link text — e.g. According to Discovery, a premier science education network, [the Komodo dragon is the largest extant lizard, reaching up to ten feet in length](URL). The opening bracket must come right after the credibility clause, the closing bracket must sit right before "(URL)" with nothing in between, and the raw URL must never appear anywhere else in the entry — not as plain text, and not a second time. Use the exact live URLs discovered via Google Search.\n`;
     }
 
 
