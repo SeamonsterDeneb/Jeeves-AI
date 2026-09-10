@@ -1,6 +1,8 @@
 (function(){
   'use strict';
+  console.log('Jeeves build: v1.0.4 - Pre-parse Regex Active');
   // Configure highlight.js immediately
+
   hljs.configure({ ignoreUnescapedHTML: true });
 
   // ---------- Config / storage ----------
