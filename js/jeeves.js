@@ -1,6 +1,6 @@
 (function(){
   'use strict';
-  console.log('Jeeves build: v1.0.6 - logging grounding');
+  console.log('Jeeves build: v1.1 - footnote scoping');
   // Configure highlight.js immediately
 
   hljs.configure({ ignoreUnescapedHTML: true });
@@ -288,7 +288,7 @@
     const link = e.target.closest('a.footnote-ref, a[href^="#ref-"]');
     if (!link) return;
     e.preventDefault();
-    const refId = link.dataset.ref ? `ref-${link.dataset.ref}` : (link.getAttribute('href') || '').replace(/^#/, '');
+    const refId = (link.getAttribute('href') || '').replace(/^#/, '');
     const refEl = document.getElementById(refId);
     if (refEl) {
       refEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -299,7 +299,15 @@
     }
   }
 
+  let footnoteScopeCounter = 0;
+  function getFootnoteScope(container){
+    if (!container.dataset.footnoteScope) {
+      container.dataset.footnoteScope = 'm' + (++footnoteScopeCounter);
+    }
+    return container.dataset.footnoteScope;
+  }
   function renderMarkdownInto(container, rawText){
+    const scope = getFootnoteScope(container);
     let text = rawText || '';
 
     // Convert basic inline LaTeX like $\text{Na}^+$ or $\text{Cl}^-$ to standard text
@@ -342,7 +350,7 @@
     // 4. Convert bracketed citations [1] or [1, 2] (not markdown links) to HTML superscripts
     text = text.replace(/(?<!\[)\[(\d+(?:\s*,\s*\d+)*)\](?!\()/g, (match, numsGroup) => {
       const links = numsGroup.split(',').map(n => n.trim()).filter(Boolean).map(num => {
-        return `<a href="#ref-${num}" class="footnote-ref" data-ref="${num}">${num}</a>`;
+        return `<a href="#ref-${scope}-${num}" class="footnote-ref" data-ref="${num}">${num}</a>`;
       });
       return `<sup style="color:var(--brass-bright);">${links.join(', ')}</sup>`;
     });
@@ -395,7 +403,7 @@
           const num = idx + 1;
           const cleanEntry = entryHtml.replace(/^\[?\d+\]?\.?\s*/, '');
           const li = document.createElement('li');
-          li.id = `ref-${num}`;
+          li.id = `ref-${scope}-${num}`;
           li.innerHTML = cleanEntry;
           ol.appendChild(li);
         });
@@ -414,7 +422,7 @@
     // match the rest of the footnotes.
     const refUrlToNum = {};
     container.querySelectorAll('ol li[id^="ref-"]').forEach(li => {
-      const num = li.id.slice(4);
+      const num = li.id.slice(4 + scope.length + 1);
       const link = li.querySelector('a[href]');
       if (link) refUrlToNum[link.getAttribute('href')] = num;
     });
@@ -425,7 +433,7 @@
         if (num && /^\d+$/.test(a.textContent.trim())) {
           const sup = document.createElement('sup');
           sup.style.color = 'var(--brass-bright)';
-          sup.innerHTML = `<a href="#ref-${num}" class="footnote-ref" data-ref="${num}">${num}</a>`;
+          sup.innerHTML = `<a href="#ref-${scope}-${num}" class="footnote-ref" data-ref="${num}">${num}</a>`;
           a.replaceWith(sup);
         }
       });
@@ -438,7 +446,7 @@
       if (/^\d+(?:\s*,\s*\d+)*$/.test(raw)) {
         sup.style.color = 'var(--brass-bright)';
         const nums = raw.split(',').map(n => n.trim()).filter(Boolean);
-        sup.innerHTML = nums.map(num => `<a href="#ref-${num}" class="footnote-ref" data-ref="${num}">${num}</a>`).join(', ');
+        sup.innerHTML = nums.map(num => `<a href="#ref-${scope}-${num}" class="footnote-ref" data-ref="${num}">${num}</a>`).join(', ');
       }
     });
 
