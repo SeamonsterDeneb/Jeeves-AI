@@ -1,6 +1,6 @@
 (function(){
   'use strict';
-  console.log('Jeeves build: v1.0.5 - Pre-parse Regex Active, closed gap');
+  console.log('Jeeves build: v1.0.6 - logging grounding');
   // Configure highlight.js immediately
 
   hljs.configure({ ignoreUnescapedHTML: true });
