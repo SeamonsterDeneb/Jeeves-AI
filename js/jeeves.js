@@ -269,37 +269,76 @@
     anchor.appendChild(sr);
   }
   
+  function handleFootnoteClick(e) {
+    const link = e.target.closest('a.footnote-ref, a[href^="#ref-"]');
+    if (!link) return;
+    e.preventDefault();
+    const refId = link.dataset.ref ? `ref-${link.dataset.ref}` : (link.getAttribute('href') || '').replace(/^#/, '');
+    const refEl = document.getElementById(refId);
+    if (refEl) {
+      refEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      refEl.style.transition = 'background-color 0.4s ease';
+      const origBg = refEl.style.backgroundColor;
+      refEl.style.backgroundColor = 'var(--ink-panel-2, rgba(212, 175, 55, 0.2))';
+      setTimeout(() => { refEl.style.backgroundColor = origBg; }, 1500);
+    }
+  }
+
   function renderMarkdownInto(container, rawText){
+    let text = rawText || '';
+
+    // Convert basic inline LaTeX like $\text{Na}^+$ or $\text{Cl}^-$ to standard text
+    text = text.replace(/\$\\text\{([A-Za-z0-9]+)\}\^\{?([+-]|\d+)\}?\$/g, '$1<sup>$2</sup>');
+    text = text.replace(/\$([^$]+)\$/g, '$1');
+
+    // 1. Convert quote syntax before markdown parsing
+    const quoteRegex = /\[\[QUOTE\s+"([^"]*)"\s*\|\s*([^\]]+)\]\]/g;
+    text = text.replace(quoteRegex, (match, quoteText, author) => {
+      const cleanAuthor = author.trim();
+      const url = `https://www.google.com/search?q=${encodeURIComponent(`"${quoteText}" ${cleanAuthor} quote`)}`;
+      return `[&ldquo;${quoteText}&rdquo;](${url}) &mdash; *${cleanAuthor}*`;
+    });
+
+    // 2. Map all unicode superscripts (¹²³ and ⁰⁴⁵⁶⁷⁸⁹) and carets (^1, ^[1]) to standard brackets
+    const unicodeSupMap = {
+      '\u00B9': '1', '\u00B2': '2', '\u00B3': '3', '\u2070': '0',
+      '\u2074': '4', '\u2075': '5', '\u2076': '6', '\u2077': '7',
+      '\u2078': '8', '\u2079': '9'
+    };
+    text = text.replace(/[\u00B9\u00B2\u00B3\u2070\u2074-\u2079]+(?:\s*,\s*[\u00B9\u00B2\u00B3\u2070\u2074-\u2079]+)*/g, (match) => {
+      const parts = match.split(',').map(part => {
+        return part.trim().split('').map(ch => unicodeSupMap[ch] || ch).join('');
+      });
+      return `[${parts.join(', ')}]`;
+    });
+    text = text.replace(/\^\[?(\d+(?:\s*,\s*\d+)*)\]?/g, '[$1]');
+
+    // 3. Merge adjacent citation groups: [1][2] -> [1, 2]
+    text = text.replace(/\[(\d+(?:\s*,\s*\d+)*)\](?:\s*,?\s*\[(\d+(?:\s*,\s*\d+)*)\])+/g, (match) => {
+      const nums = match.match(/\d+/g);
+      return `[${nums.join(', ')}]`;
+    });
+
+    // 4. Convert bracketed citations [1] or [1, 2] (not markdown links) to HTML superscripts
+    text = text.replace(/(?<!\[)\[(\d+(?:\s*,\s*\d+)*)\](?!\()/g, (match, numsGroup) => {
+      const links = numsGroup.split(',').map(n => n.trim()).filter(Boolean).map(num => {
+        return `<a href="#ref-${num}" class="footnote-ref" data-ref="${num}">${num}</a>`;
+      });
+      return `<sup style="color:var(--brass-bright);">${links.join(', ')}</sup>`;
+    });
+
+    // 5. Parse Markdown and sanitize HTML
     const parser = (typeof marked !== 'undefined') ? marked : { parse: (t) => t };
-    const dirty = parser.parse(rawText || '');
+    let html = parser.parse(text);
+
     if (window.DOMPurify) {
-      container.innerHTML = DOMPurify.sanitize(dirty);
+      container.innerHTML = DOMPurify.sanitize(html, { ADD_ATTR: ['target'] });
     } else {
       console.error("Jeeves: Security risk! DOMPurify failed to load.");
       container.textContent = "Error: Security components failed to load.";
-    }
-    
-    // Locate and convert text nodes containing [[QUOTE...]]
-    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
-    let node;
-    const nodesToReplace = [];
-    const quoteRegex = /\[\[QUOTE\s+"([^"]*)"\s*\|\s*([^\]]+)\]\]/g;
-
-    while (node = walker.nextNode()) {
-      quoteRegex.lastIndex = 0;
-      if (quoteRegex.test(node.textContent)) nodesToReplace.push(node);
+      return;
     }
 
-    nodesToReplace.forEach(node => {
-      const span = document.createElement('span');
-      span.innerHTML = node.textContent.replace(quoteRegex, (match, quoteText, author) => {
-        const cleanAuthor = author.trim();
-        const url = `https://www.google.com/search?q=${encodeURIComponent(`"${quoteText}" ${cleanAuthor} quote`)}`;
-        return `<a href="${url}" target="_blank" rel="noopener" style="color:var(--brass-bright); text-decoration:underline dotted; text-underline-offset:2px; display:inline-flex; align-items:center; gap:3px;">&ldquo;${escapeHtml(quoteText)}&rdquo;<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg><span class="sr-only">(opens in a new tab)</span></a> <span style="color:var(--mist);">&mdash; ${escapeHtml(cleanAuthor)}</span>`;
-      });
-      node.parentNode.replaceChild(span, node);
-    });
-;
     // Robustly extract and format the References section into an <ol> with unique id per item
     const refHeaders = Array.from(container.querySelectorAll('h1, h2, h3, h4, p')).filter(el => {
       const txt = el.textContent.trim();
@@ -371,36 +410,6 @@
         }
       });
     }
-
-    // Map unicode superscripts (¹²³⁴⁵⁶⁷⁸⁹⁰) to standard digits
-    const unicodeSupMap = { '¹':'1', '²':'2', '³':'3', '⁴':'4', '⁵':'5', '⁶':'6', '⁷':'7', '⁸':'8', '⁹':'9', '⁰':'0' };
-    container.innerHTML = container.innerHTML.replace(/[¹²³⁴⁵⁶⁷⁸⁹⁰]+(?:\s*,\s*[¹²³⁴⁵⁶⁷⁸⁹⁰]+)*/g, (match) => {
-      const groups = match.split(',').map(part => {
-        const digits = part.trim().split('').map(ch => unicodeSupMap[ch] || ch).join('');
-        return `<a href="#ref-${digits}" class="footnote-ref" data-ref="${digits}">${digits}</a>`;
-      });
-      return `<sup style="color:var(--brass-bright);">${groups.join(', ')}</sup>`;
-    });
-
-    // The model sometimes cites multiple sources for one claim as separate adjacent
-    // groups — [1][2], [1] [2], or [1], [2] — instead of one grouped [1, 2]. Merge
-    // any such run into a single bracket group first, so it becomes one <sup> below
-    // with a superscript comma between the numbers, rather than two <sup>s split by
-    // a plain-text comma. (Real markdown links like [1](url) aren't touched: the
-    // "(" that follows breaks the run, since this only matches "]" runs immediately
-    // followed by another "[".)
-    container.innerHTML = container.innerHTML.replace(/\[(\d+(?:\s*,\s*\d+)*)\](?:\s*,?\s*\[(\d+(?:\s*,\s*\d+)*)\])+/g, (match) => {
-      const nums = match.match(/\d+/g);
-      return `[${nums.join(', ')}]`;
-    });
-
-    // Also handle bracketed citations [1] or [1, 2, 5] if generated
-    container.innerHTML = container.innerHTML.replace(/(?<!data-ref=["'])(?<!id=["']ref-)(?<!#ref-)(?<!\[)\[(\d+(?:\s*,\s*\d+)*)\](?!\()/g, (match, numsGroup) => {
-      const links = numsGroup.split(',').map(n => n.trim()).filter(Boolean).map(num => {
-        return `<a href="#ref-${num}" class="footnote-ref" data-ref="${num}">${num}</a>`;
-      });
-      return `<sup style="color:var(--brass-bright);">${links.join(', ')}</sup>`;
-    });
 
     // Also wrap existing <sup> tags if the model output raw <sup>1</sup> or <sup>1, 2</sup>
     container.querySelectorAll('sup').forEach(sup => {
@@ -482,20 +491,9 @@
       } catch(e){ console.warn('Jeeves: skipped code block wrap', e); }
     });
 
-    // Attach click handlers to footnote links
-    container.querySelectorAll('.footnote-ref').forEach(link => {
-      link.addEventListener('click', (e) => {
-        e.preventDefault();
-        const refNum = link.getAttribute('data-ref');
-        const target = container.querySelector(`#ref-${refNum}`) || container.querySelector(`#jeeves-ref-${refNum}`);
-        if (target) {
-          target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          target.classList.remove('footnote-highlight');
-          void target.offsetWidth;
-          target.classList.add('footnote-highlight');
-        }
-      });
-    });
+    // Delegated event listener for footnote navigation
+    container.removeEventListener('click', handleFootnoteClick);
+    container.addEventListener('click', handleFootnoteClick);
   }
 
     // Sources that are rarely citation-worthy (crowdsourced Q&A, social feeds)

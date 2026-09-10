@@ -861,13 +861,14 @@ pointer-events:none;
     outline: none;
   }
   .footnote-highlight {
-    animation: footnote-glow 2s ease-out;
+    animation: highlight-fade 2s ease-out;
     border-radius: 4px;
   }
-  @keyframes footnote-glow {
-    0% { background-color: rgba(184, 146, 90, 0.45); }
-    100% { background-color: transparent; }
+  @keyframes highlight-fade {
+    from { background: rgba(255, 255, 0, 0.3); }
+    to { background: transparent; }
   }
+
   .bubble h4 { border-top:1px solid var(--hairline); padding-top:10px; margin:10px 0 5px; }
 
 
