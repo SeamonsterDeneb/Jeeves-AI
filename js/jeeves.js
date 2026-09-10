@@ -1186,6 +1186,11 @@
           if (!candidate) continue;
 
           if (candidate.groundingMetadata) {
+            console.log('Jeeves: groundingMetadata received —', {
+              chunkCount: (candidate.groundingMetadata.groundingChunks || []).length,
+              supportCount: (candidate.groundingMetadata.groundingSupports || []).length,
+              raw: candidate.groundingMetadata
+            });
             if (candidate.groundingMetadata.groundingChunks) searchGroundingChunks = candidate.groundingMetadata.groundingChunks;
             if (candidate.groundingMetadata.groundingSupports) searchGroundingSupports = candidate.groundingMetadata.groundingSupports;
           }
