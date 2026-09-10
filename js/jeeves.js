@@ -11,6 +11,7 @@
   const LS_KEY_HONORIFIC = 'jeeves_honorific';
   const LS_KEY_THEME = 'jeeves_theme';
   const LS_KEY_MODEL = 'jeeves_model';
+  const LS_KEY_MODEL_OVERRIDES = 'jeeves_model_overrides'; // { [convoType]: modelName }
 
 
   const LS_KEY_HISTORY = 'jeeves_history';
@@ -39,6 +40,7 @@
     honorific: localStorage.getItem(LS_KEY_HONORIFIC) || 'Sir',
     theme: localStorage.getItem(LS_KEY_THEME) || 'light',
     model: localStorage.getItem(LS_KEY_MODEL) || '',
+    modelOverrides: JSON.parse(localStorage.getItem(LS_KEY_MODEL_OVERRIDES) || '{}'),
     convoType: 'general',
 
 
@@ -50,6 +52,11 @@
     pricing: {},
     usageLog: JSON.parse(localStorage.getItem(LS_KEY_USAGE)) || [],
   };
+
+    // Falls back to the default model whenever a mode has no override set.
+  function getModelForConvoType(type){
+    return (state.modelOverrides && state.modelOverrides[type]) || state.model;
+  }
   let pendingAttachments = [];
 
 
@@ -156,6 +163,12 @@
   const toggleKeyBtn = document.getElementById('toggle-key');
   const honorificInput = document.getElementById('honorific');
   const modelSelect = document.getElementById('model-select');
+  const overrideSelects = {
+    general: document.getElementById('model-override-general'),
+    coding: document.getElementById('model-override-coding'),
+    cooking: document.getElementById('model-override-cooking'),
+    research: document.getElementById('model-override-research'),
+  };
   const saveSettingsBtn = document.getElementById('save-settings-btn');
   const clearHistoryBtn = document.getElementById('clear-history-btn');
   const refreshAppBtn = document.getElementById('refresh-app-btn');
@@ -919,6 +932,20 @@
     });
     modelSelect.disabled = false;
 
+    Object.entries(overrideSelects).forEach(([type, sel]) => {
+      if (!sel) return;
+      const currentOverride = state.modelOverrides[type] || '';
+      sel.innerHTML = '<option value="">Use default model</option>';
+      usable.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.name;
+        opt.textContent = m.displayName || m.name;
+        sel.appendChild(opt);
+      });
+      sel.disabled = false;
+      sel.value = usable.some(m => m.name === currentOverride) ? currentOverride : '';
+    });
+
     // Selection precedence: previously saved model if still present, else recommended
     const savedStillValid = preferredModel && usable.some(m => m.name === preferredModel);
     modelSelect.value = savedStillValid ? preferredModel : recommended.name;
@@ -963,6 +990,11 @@
     state.theme = newTheme;
     state.model = newModel;
 
+    state.modelOverrides = {};
+    Object.entries(overrideSelects).forEach(([type, sel]) => {
+      if (sel && sel.value) state.modelOverrides[type] = sel.value;
+    });
+
     applyTheme(state.theme);
 
     state.pricing[newModel] = {
@@ -975,6 +1007,7 @@
     localStorage.setItem(LS_KEY_HONORIFIC, state.honorific);
     localStorage.setItem(LS_KEY_THEME, state.theme);
     localStorage.setItem(LS_KEY_MODEL, state.model);
+    localStorage.setItem(LS_KEY_MODEL_OVERRIDES, JSON.stringify(state.modelOverrides));
 
     persistPricing();
 
@@ -1112,7 +1145,7 @@
 
 
 
-    const usedModel = state.model;
+    const usedModel = getModelForConvoType(state.convoType);
     const { bubble: modelBubble } = addModelMessagePlaceholder();
 
     const contextMessages = state.history.slice(-MAX_TURNS_SENT).map(t => ({ role: t.role, parts: t.parts }));

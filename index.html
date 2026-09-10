@@ -159,6 +159,27 @@
           <p class="field-help" id="hidden-models-note" style="display:none;"></p>
         </div>
 
+        <div class="field" id="mode-model-overrides-field">
+          <label>Model per Mode (optional)</label>
+          <p class="field-help" style="margin-top:0;">Leave a mode on "Use default model" to fall back to the model selected above. Handy when one mode — like Research — needs a model that actually returns Search grounding data.</p>
+          <div class="key-row" style="margin-bottom:8px;">
+            <label style="width:100px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:13px;">💬 General</label>
+            <select id="model-override-general" style="flex:1;" disabled><option value="">Use default model</option></select>
+          </div>
+          <div class="key-row" style="margin-bottom:8px;">
+            <label style="width:100px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:13px;">💻 Coding</label>
+            <select id="model-override-coding" style="flex:1;" disabled><option value="">Use default model</option></select>
+          </div>
+          <div class="key-row" style="margin-bottom:8px;">
+            <label style="width:100px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:13px;">🍳 Cooking</label>
+            <select id="model-override-cooking" style="flex:1;" disabled><option value="">Use default model</option></select>
+          </div>
+          <div class="key-row">
+            <label style="width:100px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:13px;">🔍 Research</label>
+            <select id="model-override-research" style="flex:1;" disabled><option value="">Use default model</option></select>
+          </div>
+        </div>
+
         <div class="field">
           <label>Cost tracking (optional)</label>
           <p class="field-help" style="margin-top:0;margin-bottom:10px;">Pricing shifts often and varies by model, so Jeeves won't guess it. Enter your own rate from <a href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noopener">Google's live pricing page</a> and Jeeves will total it up per message.</p>
