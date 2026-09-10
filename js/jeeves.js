@@ -293,6 +293,11 @@
     text = text.replace(/\$\\text\{([A-Za-z0-9]+)\}\^\{?([+-]|\d+)\}?\$/g, '$1<sup>$2</sup>');
     text = text.replace(/\$([^$]+)\$/g, '$1');
 
+    // Normalize linked citations and markdown footnotes into standard brackets
+    text = text.replace(/\[\^(\d+)\]/g, '[$1]');
+    text = text.replace(/\[(\d+(?:\s*,\s*\d+)*)\]\([^)]+\)/g, '[$1]');
+
+
     // 1. Convert quote syntax before markdown parsing
     const quoteRegex = /\[\[QUOTE\s+"([^"]*)"\s*\|\s*([^\]]+)\]\]/g;
     text = text.replace(quoteRegex, (match, quoteText, author) => {
