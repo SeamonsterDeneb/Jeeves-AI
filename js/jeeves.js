@@ -148,8 +148,11 @@
             state.activeId = state.conversations[0].id;
           }
           const activeConvo = state.conversations.find(c => c.id === state.activeId);
-          state.history = activeConvo ? (activeConvo.history || []) : [];
-          replayHistory();
+          const incomingHistory = activeConvo ? (activeConvo.history || []) : [];
+          if (JSON.stringify(incomingHistory) !== JSON.stringify(state.history)) {
+            state.history = incomingHistory;
+            replayHistory();
+          }
           if (archiveOverlay?.classList.contains('open')) {
             renderArchives();
           }
@@ -589,15 +592,13 @@
     // Format actionable links (Calendar, Maps, SMS, Mailto, Tel) into button chips
     container.querySelectorAll('a').forEach(link => {
       const href = link.getAttribute('href') || '';
-      const isAction = /^(mailto:|sms:|tel:|https:\/\/(www\.)?(calendar\.google\.com|google\.com\/maps|maps\.google\.com|maps\.apple\.com))/i.test(href);
+      const isAction = /^(mailto:|sms:|tel:|geo:|https?:\/\/(?:[a-z0-9-]+\.)*(?:calendar\.google\.com|google\.com\/maps|maps\.google\.com|maps\.apple\.com|goo\.gl\/maps|maps\.app\.goo\.gl|waze\.com))/i.test(href);
       if (isAction) {
         link.classList.add('action-link-btn');
-      }
-      if (!link.classList.contains('footnote-ref') && !href.startsWith('#') && !link.querySelector('.sr-only')) {
+      } else if (!link.classList.contains('footnote-ref') && !href.startsWith('#') && !link.querySelector('.sr-only')) {
         addNewTabAffordance(link);
       }
     });
-
 
     container.querySelectorAll('pre code').forEach(codeEl => {
       const pre = codeEl.parentElement;
@@ -872,7 +873,7 @@
         const { row, bubble } = messageRow('model');
         renderMarkdownInto(bubble, text);
         if (turn.usage) {
-          const meta = buildMetaLine(turn.usage, turn.model);
+          const meta = buildMetaLine(turn.usage, turn.model, turn.timestamp);
           if (meta) bubble.appendChild(meta);
         }
         if (chatEl) chatEl.appendChild(row);
@@ -884,9 +885,8 @@
   // ---------- Persona ----------
   function buildSystemInstruction(){
     const h = (state.honorific || 'Sir').trim() || 'Sir';
-        let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Whenever you quote from great literature or notable historical figures, always wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [&ldquo;the exact quoted text&rdquo;](https://www.google.com/search?q=%22the%20exact%20quoted%20text%22%20Author%20Name%20quote) &mdash; *Author Name*. Do not add your own quotation marks or a separate reference note around it. Whenever you cite a source inline, use ONLY a bare numeric marker in square brackets immediately after the relevant text (e.g. <sup style="color:var(--brass-bright);"><a href="#ref-m45-1" class="footnote-ref" data-ref="1">1</a></sup>) — NEVER format an inline marker as a markdown link such as <sup style="color:var(--brass-bright);"><a href="#ref-m45-1" class="footnote-ref" data-ref="1">1</a></sup>; real URLs belong only in the References list, not on the inline marker itself. If a single claim draws on more than one source, combine every number into one bracket group separated by commas, like <sup style="color:var(--brass-bright);"><a href="#ref-m45-1" class="footnote-ref" data-ref="1">1</a>, <a href="#ref-m45-2" class="footnote-ref" data-ref="2">2</a>, <a href="#ref-m45-4" class="footnote-ref" data-ref="4">4</a></sup> — never write separate adjacent groups such as <sup style="color:var(--brass-bright);"><a href="#ref-m45-1" class="footnote-ref" data-ref="1">1</a>, <a href="#ref-m45-2" class="footnote-ref" data-ref="2">2</a></sup> or <sup style="color:var(--brass-bright);"><a href="#ref-m45-1" class="footnote-ref" data-ref="1">1</a>, <a href="#ref-m45-2" class="footnote-ref" data-ref="2">2</a></sup>.
+    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "{h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Whenever you quote from great literature or notable historical figures, always wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [&ldquo;the exact quoted text&rdquo;](https://www.google.com/search?q=%22the%20exact%20quoted%20text%22%20Author%20Name%20quote) &mdash; *Author Name*. Do not add your own quotation marks or a separate reference note around it. Whenever you cite a source inline, use ONLY a bare numeric marker in square brackets immediately after the relevant text (e.g. <sup style="color:var(--brass-bright);"><a href="#ref-m166-1" class="footnote-ref" data-ref="1">1</a></sup>) — NEVER format an inline marker as a markdown link such as <sup style="color:var(--brass-bright);"><a href="#ref-m166-1" class="footnote-ref" data-ref="1">1</a></sup>; real URLs belong only in the References list, not on the inline marker itself. If a single claim draws on more than one source, combine every number into one bracket group separated by commas, like <sup style="color:var(--brass-bright);"><a href="#ref-m166-1" class="footnote-ref" data-ref="1">1</a>, <a href="#ref-m166-2" class="footnote-ref" data-ref="2">2</a>, <a href="#ref-m166-4" class="footnote-ref" data-ref="4">4</a></sup> — never write separate adjacent groups such as <sup style="color:var(--brass-bright);"><a href="#ref-m166-1" class="footnote-ref" data-ref="1">1</a>, <a href="#ref-m166-2" class="footnote-ref" data-ref="2">2</a></sup> or <sup style="color:var(--brass-bright);"><a href="#ref-m166-1" class="footnote-ref" data-ref="1">1</a>, <a href="#ref-m166-2" class="footnote-ref" data-ref="2">2</a></sup>.
         - Mobile Action Links: When scheduling, navigating, or composing drafts, proactively provide markdown links with actionable intents (e.g. [Add to Calendar](https://calendar.google.com/calendar/render?action=TEMPLATE&text=...), [Directions](https://www.google.com/maps/dir/?api=1&destination=...), [Send Email](mailto:...?subject=...&body=...), [Send SMS](sms:?body=...)).`;
-
 
     if (state.convoType === 'coding') {
       instructions += `\n- You are in 'Coding Help' mode. ALWAYS use small, highly targeted replacements. Favor a micro-replacement strategy over replacing large blocks. Ensure all code blocks, commands, or file paths remain clean and syntactically precise. You must use this pattern for modifications:
@@ -1352,7 +1352,17 @@
           // Waking the voice for mobile browsers
       const wakeUp = new SpeechSynthesisUtterance('');
       window.speechSynthesis.speak(wakeUp);
-    const now = new Date().toLocaleString();
+        const now = new Date().toLocaleString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZoneName: 'short'
+    });
+
     const systemInstruction = buildSystemInstruction();
     const fullSystemInstruction = `Current date and time: ${now}. ${systemInstruction}`;
 
