@@ -1,6 +1,21 @@
 (function(){
   'use strict';
-  console.log('Jeeves build: v1.1 - footnote scoping');
+  // ---------- Firebase Configuration & Initialization ----------
+  const firebaseConfig = {
+    apiKey: "AIzaSyDKwI4lR1kiaXnjk-hV2ZAUUWy5yvpYzvY",
+    authDomain: "jeeves-login-6391e.firebaseapp.com",
+    projectId: "jeeves-login-6391e",
+    storageBucket: "jeeves-login-6391e.firebasestorage.app",
+    messagingSenderId: "273426110474",
+    appId: "1:273426110474:web:71f7e27fdd282fc14027f3"
+  };
+
+  if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+    window.auth = firebase.auth();
+    window.db = firebase.firestore();
+  }
+
   // Configure highlight.js immediately
 
   hljs.configure({ ignoreUnescapedHTML: true });
@@ -57,7 +72,90 @@
   function getModelForConvoType(type){
     return (state.modelOverrides && state.modelOverrides[type]) || state.model;
   }
+  let isAuthenticated = false;
+  let cloudSyncTimer = null;
+  let currentUser = null;
+
+  function signInWithGoogle() {
+    if (!window.auth) return;
+    const provider = new firebase.auth.GoogleAuthProvider();
+    window.auth.signInWithPopup(provider).catch(err => {
+      console.error(`Authentication difficulty, ${state.honorific}:`, err);
+    });
+  }
+
+  function signOutUser() {
+    if (!window.auth) return;
+    if (unsubscribeCloudSync) {
+      unsubscribeCloudSync();
+      unsubscribeCloudSync = null;
+    }
+    window.auth.signOut();
+  }
+
+  if (typeof firebase !== 'undefined') {
+    window.auth.onAuthStateChanged((user) => {
+      currentUser = user;
+      isAuthenticated = !!user;
+      const authBtn = document.getElementById('auth-btn');
+      const authStatus = document.getElementById('auth-user-status');
+      if (authBtn) {
+        authBtn.textContent = user ? 'Sign Out' : 'Sign In with Google';
+      }
+      if (authStatus) {
+        authStatus.textContent = user ? `Logged in as ${user.email}` : '';
+      }
+
+
+      if (user) {
+        initCloudSync(user.uid);
+      } else {
+        if (unsubscribeCloudSync) {
+          unsubscribeCloudSync();
+          unsubscribeCloudSync = null;
+        }
+      }
+    });
+  }
+
+
+    let unsubscribeCloudSync = null;
+
+  function initCloudSync(uid) {
+    if (!window.db) return;
+    if (unsubscribeCloudSync) unsubscribeCloudSync();
+
+    unsubscribeCloudSync = window.db
+      .collection('users')
+      .doc(uid)
+      .collection('conversations')
+      .onSnapshot((snapshot) => {
+        const cloudConvos = [];
+        snapshot.forEach(doc => {
+          cloudConvos.push({ id: doc.id, ...doc.data() });
+        });
+
+        if (cloudConvos.length > 0) {
+          state.conversations = cloudConvos;
+          const activeExists = state.conversations.some(c => c.id === state.activeId);
+          if (!activeExists) {
+            state.activeId = state.conversations[0].id;
+          }
+          const activeConvo = state.conversations.find(c => c.id === state.activeId);
+          state.history = activeConvo ? (activeConvo.history || []) : [];
+          replayHistory();
+          if (archiveOverlay?.classList.contains('open')) {
+            renderArchives();
+          }
+        }
+      }, (err) => {
+        console.error(`Real-time sync difficulty, ${state.honorific}:`, err);
+      });
+  }
+
   let pendingAttachments = [];
+
+
 
 
   function applyTheme(themeName) {
@@ -1105,7 +1203,30 @@
       try { localStorage.setItem(LS_KEY_CONVERSATIONS, JSON.stringify(state.conversations)); } catch(e){}
     }
     try { localStorage.setItem(LS_KEY_ACTIVE, state.activeId); } catch(e){}
+
+    if (isAuthenticated && window.db && window.auth?.currentUser) {
+      clearTimeout(cloudSyncTimer);
+      cloudSyncTimer = setTimeout(async () => {
+        try {
+          const activeConvo = state.conversations.find(c => c.id === state.activeId);
+          if (!activeConvo) return;
+          const docRef = window.db
+            .collection('users')
+            .doc(window.auth.currentUser.uid)
+            .collection('conversations')
+            .doc(state.activeId);
+          await docRef.set({
+            title: activeConvo.title || 'Main Conversation',
+            history: state.history,
+            updatedAt: Date.now()
+          }, { merge: true });
+        } catch (e) {
+          console.error(`Cloud sync failed, ${state.honorific}:`, e);
+        }
+      }, 1500);
+    }
   }
+
 
   function autoResizeInput(){
     if (!inputEl) return;
@@ -1116,7 +1237,43 @@
     inputEl.style.overflowY = inputEl.scrollHeight > maxHeight ? 'auto' : 'hidden';
   }
 
+  const WODEHOUSE_THINKING_PHRASES = [
+    "Jeeves is engaging the old cerebellum",
+    "Jeeves is feeding the intellect on a bit of fish",
+    "Jeeves' massive brain is in motion",
+    "Jeeves' old lemon is functioning smoothly",
+    "Ripples of thought are stirring the grey matter",
+    "Jeeves is allowing the cerebellum to simmer gently",
+    "Jeeves is bringing the giant intellect to bear upon the problem",
+    "Jeeves' mental machinery is ticking over",
+    "Jeeves is consulting the vast mental encyclopaedia"
+  ];
+  let thinkingInterval = null;
+
+  function startThinkingAnimation() {
+    stopThinkingAnimation();
+    const el = document.getElementById('jeeves-thinking');
+    if (!el) return;
+    const phrase = WODEHOUSE_THINKING_PHRASES[Math.floor(Math.random() * WODEHOUSE_THINKING_PHRASES.length)];
+    let dots = '';
+    el.textContent = phrase + dots;
+    thinkingInterval = setInterval(() => {
+      dots += '.';
+      el.textContent = phrase + dots;
+    }, 1000);
+  }
+
+  function stopThinkingAnimation() {
+    if (thinkingInterval) {
+      clearInterval(thinkingInterval);
+      thinkingInterval = null;
+    }
+    const el = document.getElementById('jeeves-thinking');
+    if (el) el.textContent = '';
+  }
+
   async function sendMessage(){
+
     const text = inputEl.value.trim();
     if (!text && pendingAttachments.length === 0) return;
 
@@ -1150,11 +1307,9 @@
     persistHistory();
     addUserMessage(text, currentAttachments.find(a => a.type === 'image')?.dataUrl);
 
-
-
-
     const usedModel = getModelForConvoType(state.convoType);
     const { bubble: modelBubble } = addModelMessagePlaceholder();
+    startThinkingAnimation();
 
     const contextMessages = state.history.slice(-MAX_TURNS_SENT).map(t => ({ role: t.role, parts: t.parts }));
 
@@ -1241,11 +1396,13 @@
           if (chunkText) {
             fullText += chunkText;
             if (firstChunk) {
+              stopThinkingAnimation();
               modelBubble.innerHTML = '';
               firstChunk = false;
             }
             renderMarkdownInto(modelBubble, fullText);
           }
+
           if (candidate.finishReason && candidate.finishReason !== 'STOP') {
             fullText += `\n\n*(Response ended early: ${candidate.finishReason}. You may wish to ask Jeeves to continue.)*`;
           }
@@ -1344,6 +1501,7 @@
         }
       }
     } finally {
+      stopThinkingAnimation();
       sendBtn.disabled = false;
       inputEl.focus();
     }
@@ -1541,6 +1699,13 @@
   
   // ---------- Event wiring ----------
 
+  document.getElementById('auth-btn')?.addEventListener('click', () => {
+    if (isAuthenticated) {
+      signOutUser();
+    } else {
+      signInWithGoogle();
+    }
+  });
   settingsBtn?.addEventListener('click', openModal);
   closeModalBtn?.addEventListener('click', closeModal);
   modalOverlay?.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });

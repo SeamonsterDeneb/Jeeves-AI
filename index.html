@@ -66,7 +66,11 @@
         <button type="button" class="img-thumb-remove" id="remove-img-btn" title="Remove image">&times;</button>
       </div>
     </div>
-    <label for="input">Instructions</label>
+    <div class="composer-label-row">
+      <label for="input">Instructions</label>
+      <span id="jeeves-thinking" class="thinking-ticker" aria-live="polite"></span>
+    </div>
+
     <div class="composer-inner">
       <textarea autofocus id="input" rows="1" placeholder="How may I be of service?"></textarea>
       <input type="file" id="file-input" style="display:none;" multiple>
@@ -120,6 +124,11 @@
         </button>
       </div>
       <div class="modal-body">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+        <button id="auth-btn">Sign In with Google</button>
+        <span id="auth-user-status" style="font-size: 12px; opacity: 0.8; font-style: italic;"></span>
+      </div>
+
         <div id="status-area"></div>
 
         <div class="field">
@@ -214,8 +223,11 @@
 <script src="js/marked.min.js?v=2"></script>
 <script src="js/purify.min.js?v=2"></script>
 <script src="js/highlight.min.js?v=2"></script>
-  <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="css/jeeves.css">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/jeeves.css">
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script src="js/jeeves.js?v=4" defer></script>
 </body>
 </html>

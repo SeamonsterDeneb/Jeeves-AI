@@ -423,7 +423,35 @@ pointer-events:none;
     background:linear-gradient(0deg, var(--ink-panel), rgba(24,41,32,0));
     border-top:1px solid var(--hairline);
   }
+  .composer-label-row{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    max-width:860px;
+    margin:0 auto 6px;
+    padding:0 4px;
+    gap:12px;
+  }
+  .composer-label-row label[for="input"]{
+    font-size:12px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:var(--mist);
+    flex-shrink:0;
+  }
+  .thinking-ticker{
+    font-size:12px;
+    font-style:italic;
+    color:var(--brass-bright);
+    font-family:var(--font-display);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:clip;
+    flex:1;
+    min-width:0;
+  }
   .composer-inner{
+
     max-width:860px;
     margin:0 auto;
     display:flex;
