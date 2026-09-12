@@ -80,9 +80,15 @@
     if (!window.auth) return;
     const provider = new firebase.auth.GoogleAuthProvider();
     window.auth.signInWithPopup(provider).catch(err => {
-      console.error(`Authentication difficulty, ${state.honorific}:`, err);
+      console.error(`Authentication difficulty, {state.honorific}:`, err);
+      if (err.code === 'auth/unauthorized-domain') {
+        alert(`Authentication failed: This domain is not authorized in the Firebase Console. Please add "{window.location.hostname}" under Firebase -> Authentication -> Settings -> Authorized Domains.`);
+      } else if (err.code !== 'auth/popup-closed-by-user') {
+        alert(`Authentication error ({err.code}): {err.message}`);
+      }
     });
   }
+
 
   function signOutUser() {
     if (!window.auth) return;
@@ -286,7 +292,37 @@
   const micBtn = document.getElementById('mic-btn');
   const muteBtn = document.getElementById('mute-btn');
 
-  let isVoiceRequest = false;
+  let isAutoSpeakEnabled = false;
+
+  function toggleAutoSpeak(forcedState, shouldReadLatest = false) {
+    isAutoSpeakEnabled = (typeof forcedState === 'boolean') ? forcedState : !isAutoSpeakEnabled;
+
+    if (muteBtn) {
+      muteBtn.classList.toggle('active', isAutoSpeakEnabled);
+      muteBtn.setAttribute('data-tooltip', isAutoSpeakEnabled ? 'Voice output: On' : 'Voice output: Off');
+      muteBtn.title = isAutoSpeakEnabled ? 'Voice output: On' : 'Voice output: Off';
+    }
+
+    if (!isAutoSpeakEnabled) {
+      if ('speechSynthesis' in window) speechSynthesis.cancel();
+    } else if (shouldReadLatest) {
+      // Read the most recent model response only when explicitly requested
+      const lastModelTurn = [...state.history].reverse().find(t => t.role === 'model');
+      if (lastModelTurn) {
+        const textPart = (lastModelTurn.parts || []).find(p => p.text);
+        if (textPart && textPart.text) {
+          const speechText = textPart.text.replace(/```[\s\S]*?```/g, ` Please inspect the code block on screen, ${state.honorific}. `);
+          speak(speechText);
+        }
+      }
+    }
+  }
+
+  if (muteBtn) {
+    muteBtn.addEventListener('click', () => toggleAutoSpeak(undefined, !isAutoSpeakEnabled));
+  }
+
+
   
   function clearPendingImages(){
     pendingAttachments = [];
@@ -371,16 +407,16 @@
   }
   function addNewTabAffordance(anchor){
     anchor.target = '_blank';
-    anchor.rel = 'noopener';
-    anchor.style.display = 'inline';
+    anchor.rel = 'noopener noreferrer';
     const icon = document.createElement('span');
-    icon.innerHTML = '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:baseline;margin-left:3px;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>';
+    icon.innerHTML = '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:baseline;margin-left:4px;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>';
     anchor.appendChild(icon.firstChild);
     const sr = document.createElement('span');
     sr.className = 'sr-only';
     sr.textContent = '(opens in a new tab)';
     anchor.appendChild(sr);
   }
+
   
   function handleFootnoteClick(e) {
     const link = e.target.closest('a.footnote-ref, a[href^="#ref-"]');
@@ -550,12 +586,18 @@
 
 
 
-    // Ensure external links open in a new tab without altering footnote links
+    // Format actionable links (Calendar, Maps, SMS, Mailto, Tel) into button chips
     container.querySelectorAll('a').forEach(link => {
-      if (!link.classList.contains('footnote-ref') && !link.getAttribute('href')?.startsWith('#') && !link.querySelector('.sr-only')) {
+      const href = link.getAttribute('href') || '';
+      const isAction = /^(mailto:|sms:|tel:|https:\/\/(www\.)?(calendar\.google\.com|google\.com\/maps|maps\.google\.com|maps\.apple\.com))/i.test(href);
+      if (isAction) {
+        link.classList.add('action-link-btn');
+      }
+      if (!link.classList.contains('footnote-ref') && !href.startsWith('#') && !link.querySelector('.sr-only')) {
         addNewTabAffordance(link);
       }
     });
+
 
     container.querySelectorAll('pre code').forEach(codeEl => {
       const pre = codeEl.parentElement;
@@ -778,15 +820,6 @@
     u.pitch = 0.9;
     speechSynthesis.speak(u);
   }
-  
-  document.addEventListener('click', (e) => {
-    if (e.target.closest('#mute-btn') && 'speechSynthesis' in window) {
-      speechSynthesis.cancel();
-    }
-  });
-
-
-
 
   function addModelMessagePlaceholder(){
     const { row, bubble } = messageRow('model');
@@ -851,7 +884,9 @@
   // ---------- Persona ----------
   function buildSystemInstruction(){
     const h = (state.honorific || 'Sir').trim() || 'Sir';
-    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Whenever you quote from great literature or notable historical figures, always wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [[QUOTE "the exact quoted text"|Author Name]]. Do not add your own quotation marks or a separate reference note around it. Whenever you cite a source inline, use ONLY a bare numeric marker in square brackets immediately after the relevant text (e.g. [1]) — NEVER format an inline marker as a markdown link such as [1](URL); real URLs belong only in the References list, not on the inline marker itself. If a single claim draws on more than one source, combine every number into one bracket group separated by commas, like [1, 2, 4] — never write separate adjacent groups such as [1][2] or [1], [2].`;
+        let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Whenever you quote from great literature or notable historical figures, always wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [&ldquo;the exact quoted text&rdquo;](https://www.google.com/search?q=%22the%20exact%20quoted%20text%22%20Author%20Name%20quote) &mdash; *Author Name*. Do not add your own quotation marks or a separate reference note around it. Whenever you cite a source inline, use ONLY a bare numeric marker in square brackets immediately after the relevant text (e.g. <sup style="color:var(--brass-bright);"><a href="#ref-m45-1" class="footnote-ref" data-ref="1">1</a></sup>) — NEVER format an inline marker as a markdown link such as <sup style="color:var(--brass-bright);"><a href="#ref-m45-1" class="footnote-ref" data-ref="1">1</a></sup>; real URLs belong only in the References list, not on the inline marker itself. If a single claim draws on more than one source, combine every number into one bracket group separated by commas, like <sup style="color:var(--brass-bright);"><a href="#ref-m45-1" class="footnote-ref" data-ref="1">1</a>, <a href="#ref-m45-2" class="footnote-ref" data-ref="2">2</a>, <a href="#ref-m45-4" class="footnote-ref" data-ref="4">4</a></sup> — never write separate adjacent groups such as <sup style="color:var(--brass-bright);"><a href="#ref-m45-1" class="footnote-ref" data-ref="1">1</a>, <a href="#ref-m45-2" class="footnote-ref" data-ref="2">2</a></sup> or <sup style="color:var(--brass-bright);"><a href="#ref-m45-1" class="footnote-ref" data-ref="1">1</a>, <a href="#ref-m45-2" class="footnote-ref" data-ref="2">2</a></sup>.
+        - Mobile Action Links: When scheduling, navigating, or composing drafts, proactively provide markdown links with actionable intents (e.g. [Add to Calendar](https://calendar.google.com/calendar/render?action=TEMPLATE&text=...), [Directions](https://www.google.com/maps/dir/?api=1&destination=...), [Send Email](mailto:...?subject=...&body=...), [Send SMS](sms:?body=...)).`;
+
 
     if (state.convoType === 'coding') {
       instructions += `\n- You are in 'Coding Help' mode. ALWAYS use small, highly targeted replacements. Favor a micro-replacement strategy over replacing large blocks. Ensure all code blocks, commands, or file paths remain clean and syntactically precise. You must use this pattern for modifications:
@@ -1409,12 +1444,11 @@
         }
       }
 
-      // Speak only if voice-initiated
-      if (isVoiceRequest) {
-        let finalSpeech = fullText.replace(/```[\s\S]*?```/g, " Please see the code block on screen, ${honorific}. ");
+      // Speak if voice mode or auto-read is active
+      if (isAutoSpeakEnabled) {
+        let finalSpeech = fullText.replace(/```[\s\S]*?```/g, ` Please inspect the code block on screen, ${state.honorific}. `);
         speak(finalSpeech);
       }
-      isVoiceRequest = false;
 
       // Grounding chunks contain the REAL, verified URIs Google Search found —
       // unlike anything the model might type in prose, these are guaranteed live.
@@ -1520,10 +1554,9 @@
   // Inside the event listener for micBtn click:
     micBtn.addEventListener('click', () => {
       if (micBtn.classList.contains('listening')) {
-        isVoiceRequest = false;
         recognition.stop();
       } else {
-        isVoiceRequest = true;
+        toggleAutoSpeak(true);
         baseText = inputEl.value ? (inputEl.value.trim() + ' ') : '';
         try { recognition.start(); } catch(err) { console.log("Mic error:", err); }
       }
