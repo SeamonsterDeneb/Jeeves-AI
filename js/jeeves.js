@@ -201,14 +201,60 @@
   }
 
   async function refineAllTitles() {
-    state.conversations = state.conversations.filter(c => c.history.length > 0 || c.id === 'default');
-    const unnamed = state.conversations.filter(c => c.title === 'New Conversation' && c.history.length > 0);
-    for (const convo of unnamed) {
-      convo.title = await generateTitle(convo.history);
+    const btn = document.getElementById('refine-titles-btn');
+    let statusSpan = document.getElementById('tidy-status-msg');
+
+    if (!document.getElementById('tidy-anim-style')) {
+      const style = document.createElement('style');
+      style.id = 'tidy-anim-style';
+      style.textContent = `
+        @keyframes tidyBorderGlow {
+          0% { box-shadow: 0 0 0 1px var(--brass-bright, #d4af37); }
+          50% { box-shadow: 0 0 8px 2px var(--brass-bright, #d4af37); border-color: var(--brass-bright, #d4af37); }
+          100% { box-shadow: 0 0 0 1px var(--brass-bright, #d4af37); }
+        }
+        .tidying-border {
+          animation: tidyBorderGlow 1.6s infinite ease-in-out !important;
+          opacity: 0.85;
+        }
+      `;
+      document.head.appendChild(style);
     }
-    persistHistory();
-    renderArchives();
+
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('tidying-border');
+      if (!statusSpan) {
+        statusSpan = document.createElement('span');
+        statusSpan.id = 'tidy-status-msg';
+        statusSpan.style.marginLeft = '8px';
+        statusSpan.style.fontSize = '12px';
+        statusSpan.style.color = 'var(--mist, #888)';
+        statusSpan.style.fontFamily = 'var(--font-ui, sans-serif)';
+        btn.insertAdjacentElement('afterend', statusSpan);
+      }
+      statusSpan.textContent = 'Tidying up…';
+    }
+
+    try {
+      state.conversations = state.conversations.filter(c => c.history.length > 0 || c.id === 'default');
+      const unnamed = state.conversations.filter(c => c.title === 'New Conversation' && c.history.length > 0);
+      for (const convo of unnamed) {
+        convo.title = await generateTitle(convo.history);
+      }
+      persistHistory();
+      renderArchives();
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('tidying-border');
+      }
+      if (statusSpan) {
+        statusSpan.textContent = '';
+      }
+    }
   }
+
 
   try {
     const savedBlacklist = localStorage.getItem(LS_KEY_BLACKLIST);
@@ -290,8 +336,7 @@
       if (lastModelTurn) {
         const textPart = (lastModelTurn.parts || []).find(p => p.text);
         if (textPart && textPart.text) {
-          const speechText = textPart.text.replace(/```[\s\S]*?```/g, ` Please inspect the code block on screen, ${state.honorific}. `);
-          speak(speechText);
+          speak(textPart.text);
         }
       }
     }
@@ -791,17 +836,39 @@
   
   function getJeevesVoice() {
     const voices = speechSynthesis.getVoices();
-    return voices.find(v => v.lang.startsWith('en-GB') && v.name.includes('Google')) 
-    || voices.find(v => v.lang.startsWith('en-GB'))
-    || voices.find(v => v.name.includes('Daniel'))
-    || voices[0];
+    // Prioritize high-quality Google neural voices often found in Chrome/Android
+    const preferred = voices.find(v => v.name.includes('Google UK English Male')) ||
+                      voices.find(v => v.name.includes('Google UK English Female')) ||
+                      voices.find(v => v.lang.startsWith('en-GB') && v.name.includes('Google')) ||
+                      voices.find(v => v.lang.startsWith('en-GB'));
+    return preferred || voices[0];
   }
   
+  function prepareSpeechText(text) {
+    if (!text) return '';
+    let speech = text;
+      // Transform quote syntax for speech
+    const quoteRegex = /\[\[QUOTE\s+"([^"]*)"\s*\|\s*([^\]]+)\]\]/g;
+    speech = speech.replace(quoteRegex, (match, quoteText, author) => {
+      return `${quoteText}, by ${author}`;
+    });
+
+    // Read only link labels from markdown links [label](url)
+    speech = speech.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+    // Strip remaining bare URLs
+    speech = speech.replace(/https?:\/\/\S+/g, '');
+    // Strip HTML markup (e.g. footnote tags)
+    speech = speech.replace(/<[^>]*>/g, '');
+    // Clean remaining markdown formatting characters
+    speech = speech.replace(/(\*\*|__|\*|_|#|`|~)/g, '');
+    return speech.trim();
+  }
+
   function speak(text) {
     if (!('speechSynthesis' in window)) return;
     
-    // Remove markdown asterisks and hash symbols for a cleaner reading
-    const cleanText = text.replace(/(\*\*|__|\*|_|#)/g, '');
+    const cleanText = prepareSpeechText(text);
+    if (!cleanText) return;
     
     const u = new SpeechSynthesisUtterance(cleanText);
     const voice = getJeevesVoice();
@@ -1446,8 +1513,7 @@
 
       // Speak if voice mode or auto-read is active
       if (isAutoSpeakEnabled) {
-        let finalSpeech = fullText.replace(/```[\s\S]*?```/g, ` Please inspect the code block on screen, ${state.honorific}. `);
-        speak(finalSpeech);
+        speak(fullText);
       }
 
       // Grounding chunks contain the REAL, verified URIs Google Search found —
