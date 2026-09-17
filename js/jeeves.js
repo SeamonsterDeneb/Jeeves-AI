@@ -422,15 +422,24 @@
   function renderMarkdownInto(container, rawText){
     const scope = getFootnoteScope(container);
     let text = rawText || '';
+    const isResearch = state.convoType === 'research';
+    const jeevesCodeBlocks = [];
 
-    // Convert basic inline LaTeX like $\text{Na}^+$ or $\text{Cl}^-$ to standard text
-    text = text.replace(/\$\\text\{([A-Za-z0-9]+)\}\^\{?([+-]|\d+)\}?\$/g, '$1<sup>$2</sup>');
-    text = text.replace(/\$([^$]+)\$/g, '$1');
+    if (isResearch) {
+      // Shield fenced/inline code so citation & LaTeX cleanup can't touch it
+      text = text.replace(/```[\s\S]*?```|`[^`\n]*`/g, (m) => {
+        jeevesCodeBlocks.push(m);
+        return `\u0000JCB${jeevesCodeBlocks.length - 1}\u0000`;
+      });
 
-    // Normalize linked citations and markdown footnotes into standard brackets
-    text = text.replace(/\[\^(\d+)\]/g, '[$1]');
-    text = text.replace(/\[(\d+(?:\s*,\s*\d+)*)\]\([^)]+\)/g, '[$1]');
+      // Convert basic inline LaTeX like $\text{Na}^+$ or $\text{Cl}^-$ to standard text
+      text = text.replace(/\$\\text\{([A-Za-z0-9]+)\}\^\{?([+-]|\d+)\}?\$/g, '$1<sup>$2</sup>');
+      text = text.replace(/\$([^$]+)\$/g, '$1');
 
+      // Normalize linked citations and markdown footnotes into standard brackets
+      text = text.replace(/\[\^(\d+)\]/g, '[$1]');
+      text = text.replace(/\[(\d+(?:\s*,\s*\d+)*)\]\([^)]+\)/g, '[$1]');
+    }
 
     // 1. Convert quote syntax before markdown parsing
     const quoteRegex = /\[\[QUOTE\s+"([^"]*)"\s*\|\s*([^\]]+)\]\]/g;
@@ -440,6 +449,7 @@
       return `[&ldquo;${quoteText}&rdquo;](${url}) &mdash; *${cleanAuthor}*`;
     });
 
+    if (isResearch) {
     // 2. Map all unicode superscripts (¹²³ and ⁰⁴⁵⁶⁷⁸⁹) and carets (^1, ^[1]) to standard brackets
     const unicodeSupMap = {
       '\u00B9': '1', '\u00B2': '2', '\u00B3': '3', '\u2070': '0',
@@ -467,6 +477,10 @@
       });
       return `<sup style="color:var(--brass-bright);">${links.join(', ')}</sup>`;
     });
+
+      // Restore the code/inline-code segments shielded above, completely untouched
+      text = text.replace(/\u0000JCB(\d+)\u0000/g, (_, i) => jeevesCodeBlocks[Number(i)]);
+    }
 
     // 5. Parse Markdown and sanitize HTML
     const parser = (typeof marked !== 'undefined') ? marked : { parse: (t) => t };
