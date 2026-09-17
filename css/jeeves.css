@@ -321,10 +321,11 @@ header.letterhead{
   .copy-btn:hover{ 
     color:#fff; border-color:#fff; }
 
-    .prose-copy-wrap{
+  .prose-copy-wrap{
     margin:12px 0;
     padding:14px 16px 38px;
     border-radius:var(--radius);
+    border-bottom-right-radius:0;
     border:1px solid rgba(0,0,0,0.08);
     background: #FFFF88;
     color: slategray;
@@ -472,7 +473,7 @@ pointer-events:none;
     flex-shrink:0;
   }
   .thinking-ticker{
-    font-size:12px;
+    font-size:14px;
     font-style:italic;
     color:var(--brass-bright);
     font-family:var(--font-display);
