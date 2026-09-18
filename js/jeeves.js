@@ -14,6 +14,11 @@
     firebase.initializeApp(firebaseConfig);
     window.auth = firebase.auth();
     window.db = firebase.firestore();
+    window.db.settings({
+      experimentalForceLongPolling: true,
+      experimentalAutoDetectLongPolling: false,
+      merge: true
+    });
   }
 
   // Configure highlight.js immediately
@@ -80,11 +85,11 @@
     if (!window.auth) return;
     const provider = new firebase.auth.GoogleAuthProvider();
     window.auth.signInWithPopup(provider).catch(err => {
-      console.error(`Authentication difficulty, {state.honorific}:`, err);
+      console.error(`Authentication difficulty, ${state.honorific}:`, err);
       if (err.code === 'auth/unauthorized-domain') {
-        alert(`Authentication failed: This domain is not authorized in the Firebase Console. Please add "{window.location.hostname}" under Firebase -> Authentication -> Settings -> Authorized Domains.`);
+        alert(`Authentication failed: This domain is not authorized in the Firebase Console. Please add "${window.location.hostname}" under Firebase -> Authentication -> Settings -> Authorized Domains.`);
       } else if (err.code !== 'auth/popup-closed-by-user') {
-        alert(`Authentication error ({err.code}): {err.message}`);
+        alert(`Authentication error (${err.code}): ${err.message}`);
       }
     });
   }
@@ -467,11 +472,9 @@
   function renderMarkdownInto(container, rawText){
     const scope = getFootnoteScope(container);
     let text = rawText || '';
-    const isResearch = state.convoType === 'research';
     const jeevesCodeBlocks = [];
 
-    if (isResearch) {
-      // Shield fenced/inline code so citation & LaTeX cleanup can't touch it
+    // Shield fenced/inline code so citation & LaTeX cleanup can't touch it
       text = text.replace(/```[\s\S]*?```|`[^`\n]*`/g, (m) => {
         jeevesCodeBlocks.push(m);
         return `\u0000JCB${jeevesCodeBlocks.length - 1}\u0000`;
@@ -484,7 +487,6 @@
       // Normalize linked citations and markdown footnotes into standard brackets
       text = text.replace(/\[\^(\d+)\]/g, '[$1]');
       text = text.replace(/\[(\d+(?:\s*,\s*\d+)*)\]\([^)]+\)/g, '[$1]');
-    }
 
     // 1. Convert quote syntax before markdown parsing
     const quoteRegex = /\[\[QUOTE\s+"([^"]*)"\s*\|\s*([^\]]+)\]\]/g;
@@ -494,7 +496,6 @@
       return `[&ldquo;${quoteText}&rdquo;](${url}) &mdash; *${cleanAuthor}*`;
     });
 
-    if (isResearch) {
     // 2. Map all unicode superscripts (¹²³ and ⁰⁴⁵⁶⁷⁸⁹) and carets (^1, ^[1]) to standard brackets
     const unicodeSupMap = {
       '\u00B9': '1', '\u00B2': '2', '\u00B3': '3', '\u2070': '0',
@@ -525,7 +526,6 @@
 
       // Restore the code/inline-code segments shielded above, completely untouched
       text = text.replace(/\u0000JCB(\d+)\u0000/g, (_, i) => jeevesCodeBlocks[Number(i)]);
-    }
 
     // 5. Parse Markdown and sanitize HTML
     const parser = (typeof marked !== 'undefined') ? marked : { parse: (t) => t };
@@ -542,13 +542,22 @@
     // Robustly extract and format the References section into an <ol> with unique id per item
     const refHeaders = Array.from(container.querySelectorAll('h1, h2, h3, h4, p')).filter(el => {
       const txt = el.textContent.trim();
-      return /^#*\s*references\b/i.test(txt) || /^references\b/i.test(el.querySelector('strong')?.textContent?.trim() || '');
+      return /^#*\s*(references|sources|citations|footnotes)\b/i.test(txt) || /^(references|sources|citations|footnotes)\b/i.test(el.querySelector('strong')?.textContent?.trim() || '');
     });
 
     refHeaders.forEach(headerEl => {
       let next = headerEl.nextElementSibling;
       let refEntries = [];
       const nodesToRemove = [];
+
+      // If references are trapped inside the header <p> itself (separated by <br>)
+      if (headerEl.tagName === 'P' && headerEl.innerHTML.includes('<br')) {
+        const parts = headerEl.innerHTML.split(/<br\s*\/?>/i).map(l => l.trim()).filter(Boolean);
+        if (parts.length > 1) {
+          headerEl.innerHTML = parts[0]; // keep only the header line
+          refEntries.push(...parts.slice(1));
+        }
+      }
 
       while (next) {
         if (next.tagName === 'OL' || next.tagName === 'UL') {
@@ -573,7 +582,7 @@
 
         refEntries.forEach((entryHtml, idx) => {
           const num = idx + 1;
-          const cleanEntry = entryHtml.replace(/^\[?\d+\]?\.?\s*/, '');
+          const cleanEntry = entryHtml.replace(/^(<sup[^>]*>.*?<\/sup>|\[?\d+\]?[:.]?)\s*/i, '');
           const li = document.createElement('li');
           li.id = `ref-${scope}-${num}`;
           li.innerHTML = cleanEntry;
@@ -642,7 +651,9 @@
       const langMatch = (codeEl.className || '').match(/language-(\S+)/);
       const lang = langMatch ? langMatch[1].toLowerCase() : '';
 
-      if (lang === 'copy' || lang === 'draft' || lang === 'quote') {
+      const isProseCard = state.convoType !== 'coding' || ['copy', 'draft', 'quote'].includes(lang);
+
+      if (isProseCard) {
         const wrap = document.createElement('div');
         wrap.className = 'prose-copy-wrap';
         wrap.textContent = codeEl.textContent.trim();
@@ -706,8 +717,9 @@
   const LOW_QUALITY_SOURCE_PATTERNS = [
     'quora.com', 'facebook.com', 'reddit.com', 'pinterest.com', 'tiktok.com',
     'answers.yahoo.com', 'ask.com', 'twitter.com', 'x.com', 'instagram.com',
-    'ehow.com'
+    'ehow.com', 'youtube.com', 'youtu.be', 'wikipedia.org'
   ];
+
   function isLowQualityGroundingChunk(chunk){
     const web = chunk && chunk.web;
     if (!web) return true;
@@ -741,16 +753,10 @@
       return text;
     }
 
-    // Fallback: If no references section was produced, generate one adhering to the credibility template
-    const refLines = keptChunks.map((chunk, i) => {
-      const web = chunk.web || {};
-      const title = (web.title || 'Authoritative Source').replace(/[\[\]]/g, '');
-      const uri = web.uri || '#';
-      return `${i + 1}. According to ${title}, a verified source identified via search grounding, [${title}](${uri})`;
-    });
-
-    return `${text.trimEnd()}\n\n### References\n${refLines.join('\n')}`;
+    // Fallback: If no references section was produced, return text without synthetic boilerplate
+    return text;
   }
+
 
 
 
@@ -942,9 +948,9 @@
   // ---------- Persona ----------
     function buildSystemInstruction(){
     const h = (state.honorific || 'Sir').trim() || 'Sir';
-    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Whenever you quote from great literature or notable historical figures, always wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [&ldquo;the exact quoted text&rdquo;](https://www.google.com/search?q=%22the%20exact%20quoted%20text%22%20Author%20Name%20quote) &mdash; *Author Name*. Do not add your own quotation marks or a separate reference note around it. Whenever you cite a source inline, use ONLY a bare numeric marker in square brackets immediately after the relevant text (e.g. <sup style="color:var(--brass-bright);"><a href="#ref-m214-1" class="footnote-ref" data-ref="1">1</a></sup>) — NEVER format an inline marker as a markdown link such as <sup style="color:var(--brass-bright);"><a href="#ref-m214-1" class="footnote-ref" data-ref="1">1</a></sup>; real URLs belong only in the References list, not on the inline marker itself. If a single claim draws on more than one source, combine every number into one bracket group separated by commas, like <sup style="color:var(--brass-bright);"><a href="#ref-m214-1" class="footnote-ref" data-ref="1">1</a>, <a href="#ref-m214-2" class="footnote-ref" data-ref="2">2</a>, <a href="#ref-m214-4" class="footnote-ref" data-ref="4">4</a></sup> — never write separate adjacent groups such as <sup style="color:var(--brass-bright);"><a href="#ref-m214-1" class="footnote-ref" data-ref="1">1</a>, <a href="#ref-m214-2" class="footnote-ref" data-ref="2">2</a></sup> or <sup style="color:var(--brass-bright);"><a href="#ref-m214-1" class="footnote-ref" data-ref="1">1</a>, <a href="#ref-m214-2" class="footnote-ref" data-ref="2">2</a></sup>.
-        - Mobile Action Links: When scheduling, navigating, or composing drafts, proactively provide markdown links with actionable intents (e.g. [Add to Calendar](https://calendar.google.com/calendar/render?action=TEMPLATE&text=...), [Directions](https://www.google.com/maps/dir/?api=1&destination=...), [Send Email](mailto:...?subject=...&body=...), [Send SMS](sms:?body=...)).`;
+    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Always use Google Search to ground factual claims in authoritative sources. Every factual claim in your response MUST be followed immediately by an inline numeric citation marker in bare brackets (e.g. 'Northern flying squirrels are strictly nocturnal [1, 2].'). At the end of every response containing factual claims, provide a '### References' section formatted as a numbered list matching the inline markers: 1. According to [Source Name], [brief domain credibility note], [key finding as link text](URL). Never list a reference at the bottom that is not cited inline in the body text, and never place raw URLs in inline prose. Whenever you quote from great literature or notable historical figures, wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [&ldquo;the exact quoted text&rdquo;](https://www.google.com/search?q=%22the%20exact%20quoted%20text%22%20Author%20Name%20quote) &mdash; *Author Name*.
 
+        - Mobile Action Links: When scheduling, navigating, or composing drafts, proactively provide markdown links with actionable intents (e.g. [Add to Calendar](https://calendar.google.com/calendar/render?action=TEMPLATE&text=...), [Directions](https://www.google.com/maps/dir/?api=1&destination=...), [Send Email](mailto:...?subject=...&body=...), [Send SMS](sms:?body=...)).`;
     if (state.convoType === 'coding') {
       instructions += `\n- You are in 'Coding Help' mode. ALWAYS use small, highly targeted replacements. Favor a micro-replacement strategy over replacing large blocks. Ensure all code blocks, commands, or file paths remain clean and syntactically precise. You must use this pattern for modifications:
       Paste this:
@@ -1433,11 +1439,7 @@
         generationConfig: { temperature: temperature }
       };
 
-      if (state.convoType === 'research' || state.convoType === 'cooking') {
-        body.tools = [{ googleSearch: {} }];
-      }
-
-
+      body.tools = [{ googleSearch: {} }];
 
       const resp = await fetch(url, {
         method: 'POST',
@@ -1640,11 +1642,8 @@
 
     recognition.onend = () => {
       micBtn.classList.remove('listening');
-      // Only restart if the user hasn't manually clicked 'off'
-      if (isVoiceRequest) {
-        recognition.start();
-      }
     };
+
 
     recognition.onresult = (event) => {
       let currentTranscript = '';
