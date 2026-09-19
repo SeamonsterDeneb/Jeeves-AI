@@ -347,8 +347,8 @@ header.letterhead{
   transition: width .25s ease, height .25s ease, clip-path .25s ease;
   z-index:1;
   background: linear-gradient(315deg,
-    rgba(0,0,0,0.18) 0%,
-    rgba(0,0,0,0.06) 8%,
+    rgba(0,0,0,0.35) 0%,
+    rgba(0,0,0,0.12) 10%,
     #ded896 22%,
     #f3edb0 60%,
     #fffbe0 100%);
