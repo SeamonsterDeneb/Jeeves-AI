@@ -654,9 +654,22 @@
       const isProseCard = state.convoType !== 'coding' || ['copy', 'draft', 'quote'].includes(lang);
 
       if (isProseCard) {
+        const rawNote = codeEl.textContent.trim();
         const wrap = document.createElement('div');
         wrap.className = 'prose-copy-wrap';
-        wrap.textContent = codeEl.textContent.trim();
+
+        const textDiv = document.createElement('div');
+        textDiv.className = 'prose-copy-text';
+        textDiv.textContent = rawNote;
+        wrap.appendChild(textDiv);
+
+        const dogEar = document.createElement('div');
+        dogEar.className = 'dog-ear';
+        dogEar.innerHTML = `
+          <div class="dog-ear__paper"></div>
+          <div class="dog-ear__shadow"></div>
+          <div class="dog-ear__back"></div>
+        `;
 
         const copyBtn = document.createElement('button');
         copyBtn.className = 'corner-copy-btn';
@@ -668,18 +681,19 @@
         const checkIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
         copyBtn.innerHTML = copyIcon;
 
-        copyBtn.addEventListener('click', () => {
-          navigator.clipboard.writeText(wrap.textContent.trim()).then(() => {
+        copyBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          navigator.clipboard.writeText(rawNote).then(() => {
             copyBtn.innerHTML = checkIcon;
             setTimeout(() => { copyBtn.innerHTML = copyIcon; }, 1600);
           });
         });
 
-        wrap.appendChild(copyBtn);
+        dogEar.appendChild(copyBtn);
+        wrap.appendChild(dogEar);
         pre.parentNode.replaceChild(wrap, pre);
         return;
       }
-
 
       try {
 
