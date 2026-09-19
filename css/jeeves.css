@@ -338,27 +338,42 @@ header.letterhead{
     box-shadow: 0 4px 10px rgba(0,0,0,0.08);
   }
 
+.prose-copy-wrap::before,
 .prose-copy-wrap::after{
   content:"";
   position:absolute;
   right:0; bottom:0;
   width:44px; height:44px;
-  clip-path: polygon(44px 0, 0 44px, 0 8px, 0.62px 4.94px, 2.34px 2.34px, 4.94px 0.62px, 8px 0);
+  pointer-events:none;
   transition: width .25s ease, height .25s ease, clip-path .25s ease;
+}
+.prose-copy-wrap::before{
   z-index:1;
   background: linear-gradient(315deg,
-    rgba(0,0,0,0.35) 0%,
-    rgba(0,0,0,0.12) 10%,
-    #ded896 22%,
-    #f3edb0 60%,
-    #fffbe0 100%);
-  pointer-events:none;
+    transparent 40%,
+    rgba(0, 0, 0, 0.22) 46%,
+    rgba(0, 0, 0, 0.48) 50%,
+    rgba(0, 0, 0, 0.18) 58%,
+    transparent 74%);
+}
+.prose-copy-wrap::after{
+  z-index:2;
+  clip-path: polygon(44px 0, 0 44px, 0 8px, 0.62px 4.94px, 2.34px 2.34px, 4.94px 0.62px, 8px 0);
+  background: linear-gradient(135deg,
+    #fffbe0 0%,
+    #f3edb0 45%,
+    #ded896 88%,
+    #c4bc72 100%);
 }
 
+.prose-copy-wrap:has(.corner-copy-btn:hover)::before, .prose-copy-wrap:has(.corner-copy-btn:hover)::after,
+.prose-copy-wrap:has(.corner-copy-btn:active)::before, .prose-copy-wrap:has(.corner-copy-btn:active)::after,
+.prose-copy-wrap:has(.corner-copy-btn:focus-visible)::before, .prose-copy-wrap:has(.corner-copy-btn:focus-visible)::after{
+  width:64px; height:64px;
+}
 .prose-copy-wrap:has(.corner-copy-btn:hover)::after,
 .prose-copy-wrap:has(.corner-copy-btn:active)::after,
 .prose-copy-wrap:has(.corner-copy-btn:focus-visible)::after{
-  width:64px; height:64px;
   clip-path: polygon(64px 0, 0 64px, 0 10px, 0.77px 6.17px, 2.93px 2.93px, 6.17px 0.77px, 10px 0);
 }
 
