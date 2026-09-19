@@ -345,38 +345,49 @@ header.letterhead{
   right:0; bottom:0;
   width:44px; height:44px;
   pointer-events:none;
-  transition: width .25s ease, height .25s ease, clip-path .25s ease;
+  transition: width .25s ease, height .25s ease, clip-path .25s ease, background .25s ease;
 }
 .prose-copy-wrap::before{
   z-index:1;
   background: linear-gradient(315deg,
-    transparent 40%,
-    rgba(0, 0, 0, 0.22) 46%,
-    rgba(0, 0, 0, 0.48) 50%,
-    rgba(0, 0, 0, 0.18) 58%,
-    transparent 74%);
+    transparent 38%,
+    rgba(0, 0, 0, 0.16) 44%,
+    rgba(0, 0, 0, 0.42) 50%,
+    rgba(0, 0, 0, 0.24) 58%,
+    rgba(0, 0, 0, 0.08) 72%,
+    transparent 82%);
 }
 .prose-copy-wrap::after{
   z-index:2;
   clip-path: polygon(44px 0, 0 44px, 0 8px, 0.62px 4.94px, 2.34px 2.34px, 4.94px 0.62px, 8px 0);
-  background: linear-gradient(135deg,
-    #fffbe0 0%,
-    #f3edb0 45%,
-    #ded896 88%,
-    #c4bc72 100%);
+  background: linear-gradient(315deg,
+    rgba(0, 0, 0, 0.32) 0%,
+    rgba(0, 0, 0, 0.10) 8%,
+    #ded896 24%,
+    #f3edb0 58%,
+    #fffbe0 100%);
 }
-
 .prose-copy-wrap:has(.corner-copy-btn:hover)::before, .prose-copy-wrap:has(.corner-copy-btn:hover)::after,
 .prose-copy-wrap:has(.corner-copy-btn:active)::before, .prose-copy-wrap:has(.corner-copy-btn:active)::after,
 .prose-copy-wrap:has(.corner-copy-btn:focus-visible)::before, .prose-copy-wrap:has(.corner-copy-btn:focus-visible)::after{
   width:64px; height:64px;
+}
+.prose-copy-wrap:has(.corner-copy-btn:hover)::before,
+.prose-copy-wrap:has(.corner-copy-btn:active)::before,
+.prose-copy-wrap:has(.corner-copy-btn:focus-visible)::before{
+  background: linear-gradient(315deg,
+    transparent 36%,
+    rgba(0, 0, 0, 0.20) 44%,
+    rgba(0, 0, 0, 0.48) 50%,
+    rgba(0, 0, 0, 0.28) 58%,
+    rgba(0, 0, 0, 0.10) 74%,
+    transparent 86%);
 }
 .prose-copy-wrap:has(.corner-copy-btn:hover)::after,
 .prose-copy-wrap:has(.corner-copy-btn:active)::after,
 .prose-copy-wrap:has(.corner-copy-btn:focus-visible)::after{
   clip-path: polygon(64px 0, 0 64px, 0 10px, 0.77px 6.17px, 2.93px 2.93px, 6.17px 0.77px, 10px 0);
 }
-
 .prose-copy-wrap .corner-copy-btn{
   position: absolute;
   bottom: 0;
@@ -386,7 +397,7 @@ header.letterhead{
   background: transparent;
   border: none;
   cursor: pointer;
-  z-index: 2;
+  z-index: 3;
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
@@ -394,6 +405,7 @@ header.letterhead{
   color: #55502c;
   transition: width .25s ease, height .25s ease, padding .25s ease, color .15s ease;
 }
+
 .prose-copy-wrap .corner-copy-btn:hover,
 .prose-copy-wrap .corner-copy-btn:active,
 .prose-copy-wrap .corner-copy-btn:focus-visible{
