@@ -38,6 +38,7 @@
   const LS_KEY_BLACKLIST = 'jeeves_unavailable_models';
   const LS_KEY_PRICING = 'jeeves_pricing'; // { [modelName]: { inputPerM, outputPerM, free } }
   const LS_KEY_USAGE = 'jeeves_usage_log';
+  const LS_KEY_TTS_QUOTA = 'jeeves_tts_quota';
   const LS_KEY_CONVERSATIONS = 'jeeves_archives';
   const LS_KEY_ACTIVE = 'jeeves_active_id';
   const MAX_TURNS_SENT = 24; // messages (not pairs) sent as context to the API
@@ -71,6 +72,7 @@
     blacklist: [],
     pricing: {},
     usageLog: JSON.parse(localStorage.getItem(LS_KEY_USAGE)) || [],
+    ttsQuota: JSON.parse(localStorage.getItem(LS_KEY_TTS_QUOTA)) || { count: 0, month: '' },
   };
 
     // Falls back to the default model whenever a mode has no override set.
@@ -193,7 +195,7 @@
     const context = history.slice(0, 3).map(turn => turn.parts.map(p => p.text).join(' ')).join(' ').substring(0, 500);
     const url = `https://generativelanguage.googleapis.com/v1beta/${state.model}:generateContent?key=${encodeURIComponent(state.apiKey)}`;
     try {
-      const resp = await fetch(url, {
+      const resp = await fetch('https://us-central1-jeeves-login-6391e.cloudfunctions.net/synthesizeSpeech', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -279,8 +281,15 @@
   function persistBlacklist(){
     localStorage.setItem(LS_KEY_BLACKLIST, JSON.stringify(state.blacklist));
   }
-  function persistPricing(){
-    localStorage.setItem(LS_KEY_PRICING, JSON.stringify(state.pricing));
+  function getTtsQuota() {
+    const saved = localStorage.getItem(LS_KEY_TTS_QUOTA);
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${now.getMonth()}`;
+    if (saved) {
+      const data = JSON.parse(saved);
+      if (data.month === currentMonth) return data.count;
+    }
+    return 0;
   }
   function shortModelName(fullName){
     return (fullName || '').replace(/^models\//, '');
@@ -322,6 +331,13 @@
   const micBtn = document.getElementById('mic-btn');
   const muteBtn = document.getElementById('mute-btn');
 
+  const ttsAudio = new Audio();
+  let ttsUnlocked = false;
+  function unlockAudio() {
+    if (ttsUnlocked) return;
+    ttsAudio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+    ttsAudio.play().then(() => { ttsUnlocked = true; }).catch(() => {});
+  }
   let isAutoSpeakEnabled = false;
 
   function toggleAutoSpeak(forcedState, shouldReadLatest = false) {
@@ -334,6 +350,7 @@
     }
 
     if (!isAutoSpeakEnabled) {
+      ttsAudio.pause();
       if ('speechSynthesis' in window) speechSynthesis.cancel();
     } else if (shouldReadLatest) {
       // Read the most recent model response only when explicitly requested
@@ -884,20 +901,40 @@
     return speech.trim();
   }
 
-  function speak(text) {
-    if (!('speechSynthesis' in window)) return;
+  async function speak(text) {
+    const quota = getTtsQuota();
+    if (quota < 980000) {
+      try {
+        const resp = await fetch('https://us-central1-jeeves-login-6391e.cloudfunctions.net/synthesizeSpeech', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, userId: auth.currentUser.uid })
+        });
+        if (resp.ok) {
+          const blob = await resp.blob();
+          const url = URL.createObjectURL(blob);
+          ttsAudio.src = url;
+          await ttsAudio.play();
+          return;
+        }
+      } catch (e) { console.warn("Cloud TTS failed, falling back to browser voice."); }
+    }
     
+    if (quota >= 980000 && quota < 1000000) {
+      addSystemNote("Sir, we are nearing our monthly quota for high-quality speech. I shall revert to my standard voice shortly.");
+    }
+    
+    // Fallback to browser-native
+    if (!('speechSynthesis' in window)) return;
     const cleanText = prepareSpeechText(text);
     if (!cleanText) return;
-    
     const u = new SpeechSynthesisUtterance(cleanText);
     const voice = getJeevesVoice();
     if (voice) u.voice = voice;
-    
-    u.rate = 1.0;
-    u.pitch = 0.9;
+    u.rate = 1.0; u.pitch = 0.9;
     speechSynthesis.speak(u);
   }
+
 
   function addModelMessagePlaceholder(){
     const { row, bubble } = messageRow('model');
@@ -929,6 +966,13 @@
     meta.textContent = `${stamp} · ${shortModelName(modelName)} · ${inTok}→${outTok} tokens (${totTok} total) · ${costText}`;
     return meta;
   }
+
+  function updateApp() {
+    // Force a reload and clear cache by appending a timestamp
+    const baseUrl = window.location.href.split('?')[0];
+    window.location.href = `${baseUrl}?update=${new Date().getTime()}`;
+  }
+
 
   function replayHistory(){
     clearChatDom();
@@ -988,24 +1032,39 @@
 
 
   // ---------- Settings modal ----------
-  function openModal(){
-    apiKeyInput.value = state.apiKey;
-    honorificInput.value = state.honorific;
+  function openModal() {
+    // Map of IDs to their corresponding state values
+    const fields = {
+      'api-key': state.apiKey,
+      'honorific': state.honorific
+    };
+
+    // Safely populate inputs
+    Object.keys(fields).forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = fields[id] || '';
+    });
+
+    // Handle theme radio buttons safely
     const currentThemeRadio = document.querySelector(`input[name="theme"][value="${state.theme}"]`);
     if (currentThemeRadio) currentThemeRadio.checked = true;
-    statusArea.innerHTML = '';
 
+    if (statusArea) statusArea.innerHTML = '';
+    if (hiddenModelsNote) hiddenModelsNote.style.display = 'none';
+    if (modalOverlay) modalOverlay.classList.add('open');
 
-    hiddenModelsNote.style.display = 'none';
-    modalOverlay.classList.add('open');
     if (state.apiKey) {
       fetchModels(state.apiKey, state.model);
-    } else {
+    } else if (modelSelect) {
       modelSelect.disabled = true;
       modelSelect.innerHTML = '<option value="">Enter a valid API key to fetch available models…</option>';
     }
-    if (state.model) loadPricingFieldsForModel(state.model);
+    
+    if (state.model && typeof loadPricingFieldsForModel === 'function') {
+      loadPricingFieldsForModel(state.model);
+    }
   }
+
 
   function closeModal(){
     modalOverlay.classList.remove('open');
@@ -1227,8 +1286,6 @@
     localStorage.setItem(LS_KEY_MODEL, state.model);
     localStorage.setItem(LS_KEY_MODEL_OVERRIDES, JSON.stringify(state.modelOverrides));
 
-    persistPricing();
-
     closeModal();
     replayHistory();
   }
@@ -1429,15 +1486,16 @@
           // Waking the voice for mobile browsers
       const wakeUp = new SpeechSynthesisUtterance('');
       window.speechSynthesis.speak(wakeUp);
-        const now = new Date().toLocaleString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      second: '2-digit',
-      timeZoneName: 'short'
+      unlockAudio();
+      const now = new Date().toLocaleString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        timeZoneName: 'short'
     });
 
     const systemInstruction = buildSystemInstruction();
@@ -1616,6 +1674,25 @@
           modelBubble.appendChild(note);
         }
       }
+      if (!unavailable) {
+        const retryBtn = document.createElement('button');
+        retryBtn.className = 'copy-btn';
+        retryBtn.type = 'button';
+        retryBtn.textContent = 'Retry';
+        retryBtn.addEventListener('click', () => {
+          inputEl.value = text;
+          autoResizeInput();
+          state.history.pop(); // drop the unanswered user turn
+          persistHistory();
+          const row = modelBubble.closest('.msg-row');
+          if (row) row.remove();
+          const userRows = chatEl.querySelectorAll('.msg-row.user');
+          const lastUserRow = userRows[userRows.length - 1];
+          if (lastUserRow) lastUserRow.remove();
+          sendMessage();
+        });
+        modelBubble.appendChild(retryBtn);
+      }
     } finally {
       stopThinkingAnimation();
       sendBtn.disabled = false;
@@ -1638,6 +1715,7 @@
       if (micBtn.classList.contains('listening')) {
         recognition.stop();
       } else {
+        unlockAudio();
         toggleAutoSpeak(true);
         baseText = inputEl.value ? (inputEl.value.trim() + ' ') : '';
         try { recognition.start(); } catch(err) { console.log("Mic error:", err); }
