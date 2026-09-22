@@ -884,11 +884,10 @@
   function prepareSpeechText(text) {
     if (!text) return '';
     let speech = text;
-      // Transform quote syntax for speech
-    const quoteRegex = /\[\[QUOTE\s+"([^"]*)"\s*\|\s*([^\]]+)\]\]/g;
-    speech = speech.replace(quoteRegex, (match, quoteText, author) => {
-      return `${quoteText}, by ${author}`;
-    });
+    // Transform quotation mark entities and characters into spoken quote markers
+    speech = speech.replace(/&ldquo;|&#8220;|“/gi, ' quote, ').replace(/&rdquo;|&#8221;|”/gi, ', endquote ');
+      speech = speech.replace(/"([^"\n]+)"/g, ' quote, $1, endquote ');
+      speech = speech.replace(/&[a-z0-9#]+;/gi, ' ');
 
     // Read only link labels from markdown links [label](url)
     speech = speech.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
@@ -903,12 +902,24 @@
 
   async function speak(text) {
     const quota = getTtsQuota();
-    if (quota < 980000) {
+    // Clean up quotes, stray entities, and markdown/link syntax before
+    // sending anything out for synthesis — used by both cloud and browser TTS
+    let cleanText = text.replace(/(\*\*|__|\*|_|#)/g, '');
+    cleanText = cleanText
+      .replace(/&ldquo;|&#8220;|“/gi, ' quote, ')
+      .replace(/&rdquo;|&#8221;|”/gi, ', end quote. ')
+      .replace(/"([^"\n]+)"/g, ' quote, $1, end quote. ');
+    cleanText = cleanText.replace(/&[a-z0-9#]+;/gi, ' ');
+    cleanText = cleanText.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+    cleanText = cleanText.replace(/https?:\/\/\S+/g, '');
+    cleanText = cleanText.replace(/<[^>]*>/g, '');
+
+if (quota < 980000) {
       try {
         const resp = await fetch('https://us-central1-jeeves-login-6391e.cloudfunctions.net/synthesizeSpeech', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, userId: auth.currentUser.uid })
+          body: JSON.stringify({ text: cleanText, userId: auth.currentUser.uid })
         });
         if (resp.ok) {
           const blob = await resp.blob();
@@ -926,8 +937,6 @@
     
     // Fallback to browser-native
     if (!('speechSynthesis' in window)) return;
-    const cleanText = prepareSpeechText(text);
-    if (!cleanText) return;
     const u = new SpeechSynthesisUtterance(cleanText);
     const voice = getJeevesVoice();
     if (voice) u.voice = voice;
