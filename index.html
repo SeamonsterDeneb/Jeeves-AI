@@ -75,28 +75,25 @@
       <textarea autofocus id="input" rows="1" placeholder="How may I be of service?"></textarea>
       <input type="file" id="file-input" style="display:none;" multiple>
       <div class="composer-actions">
+        <button type="button" id="mic-btn" tabindex="0" class="icon-btn tooltip-btn" title="Voice input" data-tooltip="Voice input" aria-label="Voice input" style="width:45px;height:45px;flex-shrink:0;background:var(--brass-bright);color:var(--ink-deep);border:1px solid var(--brass);border-radius:10px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+        </button>        
+        <button type="button" id="mute-btn" tabindex="0" class="icon-btn tooltip-btn" title="Stop speaking" data-tooltip="Stop speaking" aria-label="Stop speaking" style="width:38px;height:38px;flex-shrink:0;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+        </button>
         <button type="button" id="new-chat-btn" tabindex="0" class="icon-btn tooltip-btn" data-tooltip="New Conversation" title="New Conversation" aria-label="Start a new conversation" style="width:38px;height:38px;flex-shrink:0;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
         </button>
         <button type="button" id="archive-btn" tabindex="0" class="icon-btn tooltip-btn" title="Archives" data-tooltip="Archives" aria-label="Browse archives" style="width:38px;height:38px;flex-shrink:0;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/></svg>
         </button>
-        <button type="button" id="mic-btn" tabindex="0" class="icon-btn tooltip-btn" title="Voice input" data-tooltip="Voice input" aria-label="Voice input" style="width:38px;height:38px;flex-shrink:0;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
-        </button>
-        <button type="button" id="mute-btn" tabindex="0" class="icon-btn tooltip-btn" title="Stop speaking" data-tooltip="Stop speaking" aria-label="Stop speaking" style="width:38px;height:38px;flex-shrink:0;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
-        </button>
 
         <div class="convo-wrap">
-          <select id="convo-type" class="convo-select" style="width: 54px; transition: width 0.2s;" 
-                  onfocus="this.style.width='190px'" 
-                  onblur="this.style.width='54px'" 
-                  onchange="this.style.width='54px'">
+          <select id="convo-type" class="convo-select" style="width: 57px !important; flex-shrink: 0;" aria-label="Conversation type">
             <option value="general">💬 General Conversation</option>
             <option value="coding">💻 Coding Help</option>
             <option value="cooking">🍳 Culinary Advice</option>
-            <option value="research">🔍 Research Assistance</option>
+            <option value="research">📚 Research Assistance</option>
           </select>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute; right:8px; pointer-events:none; width:10px; height:10px; color:var(--mist);"><path d="m6 9 6 6 6-6"/></svg>
         </div>
