@@ -900,48 +900,78 @@
     return speech.trim();
   }
 
-  async function speak(text) {
-    const quota = getTtsQuota();
-    // Clean up quotes, stray entities, and markdown/link syntax before
-    // sending anything out for synthesis — used by both cloud and browser TTS
-    let cleanText = text.replace(/(\*\*|__|\*|_|#)/g, '');
+  let speechQueue = [];
+  let isSpeaking = false;
+
+  function stopSpeech() {
+    speechQueue = [];
+    isSpeaking = false;
+    ttsAudio.pause();
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+  }
+
+  function speak(text) {
+    if (!text) return;
+    speechQueue.push(text);
+    processSpeechQueue();
+  }
+
+  async function processSpeechQueue() {
+    if (isSpeaking || speechQueue.length === 0) return;
+    isSpeaking = true;
+    const rawText = speechQueue.shift();
+
+    let cleanText = rawText.replace(/(\*\*|__|\*|_|#)/g, '');
     cleanText = cleanText
       .replace(/&ldquo;|&#8220;|“/gi, ' quote, ')
       .replace(/&rdquo;|&#8221;|”/gi, ', end quote. ')
       .replace(/"([^"\n]+)"/g, ' quote, $1, end quote. ');
+    cleanText = cleanText.replace(/&mdash;|—/g, '. ');
     cleanText = cleanText.replace(/&[a-z0-9#]+;/gi, ' ');
     cleanText = cleanText.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
     cleanText = cleanText.replace(/https?:\/\/\S+/g, '');
-    cleanText = cleanText.replace(/<[^>]*>/g, '');
+    cleanText = cleanText.replace(/<[^>]*>/g, '').trim();
 
-if (quota < 980000) {
-      try {
-        const resp = await fetch('https://us-central1-jeeves-login-6391e.cloudfunctions.net/synthesizeSpeech', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: cleanText, userId: auth.currentUser.uid })
+    if (cleanText) {
+      const quota = getTtsQuota();
+      let playedCloud = false;
+
+      if (quota < 980000) {
+        try {
+          const resp = await fetch('https://us-central1-jeeves-login-6391e.cloudfunctions.net/synthesizeSpeech', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: cleanText, userId: auth.currentUser.uid })
+          });
+          if (resp.ok) {
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            await new Promise((resolve) => {
+              ttsAudio.src = url;
+              ttsAudio.onended = resolve;
+              ttsAudio.onerror = resolve;
+              ttsAudio.play().catch(resolve);
+            });
+            playedCloud = true;
+          }
+        } catch (e) { console.warn("Cloud TTS failed, falling back to browser voice."); }
+      }
+
+      if (!playedCloud && 'speechSynthesis' in window) {
+        await new Promise((resolve) => {
+          const u = new SpeechSynthesisUtterance(cleanText);
+          const voice = getJeevesVoice();
+          if (voice) u.voice = voice;
+          u.rate = 1.0; u.pitch = 0.9;
+          u.onend = resolve;
+          u.onerror = resolve;
+          speechSynthesis.speak(u);
         });
-        if (resp.ok) {
-          const blob = await resp.blob();
-          const url = URL.createObjectURL(blob);
-          ttsAudio.src = url;
-          await ttsAudio.play();
-          return;
-        }
-      } catch (e) { console.warn("Cloud TTS failed, falling back to browser voice."); }
+      }
     }
-    
-    if (quota >= 980000 && quota < 1000000) {
-      addSystemNote("Sir, we are nearing our monthly quota for high-quality speech. I shall revert to my standard voice shortly.");
-    }
-    
-    // Fallback to browser-native
-    if (!('speechSynthesis' in window)) return;
-    const u = new SpeechSynthesisUtterance(cleanText);
-    const voice = getJeevesVoice();
-    if (voice) u.voice = voice;
-    u.rate = 1.0; u.pitch = 0.9;
-    speechSynthesis.speak(u);
+
+    isSpeaking = false;
+    processSpeechQueue();
   }
 
 
@@ -959,7 +989,7 @@ if (quota < 980000) {
     bubble.innerHTML = `<span style="font-family:var(--font-ui); font-size:14px; color:var(--mist);">${phrase}</span>`;    
     if (chatEl) chatEl.appendChild(row);
     scrollToBottom();
-    return { row, bubble };
+    return { row, bubble, phrase };
   }
 
   function buildMetaLine(usage, modelName, timestamp){
@@ -1486,7 +1516,11 @@ if (quota < 980000) {
     addUserMessage(text, currentAttachments.find(a => a.type === 'image')?.dataUrl);
 
     const usedModel = getModelForConvoType(state.convoType);
-    const { bubble: modelBubble } = addModelMessagePlaceholder();
+    const { bubble: modelBubble, phrase: stallPhrase } = addModelMessagePlaceholder();
+    if (isAutoSpeakEnabled) {
+      stopSpeech();
+      speak(stallPhrase);
+    }
     startThinkingAnimation();
 
     const contextMessages = state.history.slice(-MAX_TURNS_SENT).map(t => ({ role: t.role, parts: t.parts }));
@@ -1544,6 +1578,7 @@ if (quota < 980000) {
       let usageMetadata = null;
       let searchGroundingChunks = [];
       let searchGroundingSupports = [];
+      let speechIndex = 0;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -1586,6 +1621,17 @@ if (quota < 980000) {
               firstChunk = false;
             }
             renderMarkdownInto(modelBubble, fullText);
+
+            if (isAutoSpeakEnabled) {
+              let unspoken = fullText.slice(speechIndex);
+              let match;
+              while ((match = unspoken.match(/^[\s\S]*?[.!?](?=\s|$)/))) {
+                const sentence = match[0].trim();
+                speechIndex += match[0].length;
+                if (sentence) speak(sentence);
+                unspoken = fullText.slice(speechIndex);
+              }
+            }
           }
 
           if (candidate.finishReason && candidate.finishReason !== 'STOP') {
@@ -1594,9 +1640,9 @@ if (quota < 980000) {
         }
       }
 
-      // Speak if voice mode or auto-read is active
-      if (isAutoSpeakEnabled) {
-        speak(fullText);
+      if (isAutoSpeakEnabled && speechIndex < fullText.length) {
+        const remaining = fullText.slice(speechIndex).trim();
+        if (remaining) speak(remaining);
       }
 
       // Grounding chunks contain the REAL, verified URIs Google Search found —
