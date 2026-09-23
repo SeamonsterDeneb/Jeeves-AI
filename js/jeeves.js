@@ -903,6 +903,7 @@
 
   let speechQueue = [];
   let isSpeaking = false;
+  let pendingSpokenReferences = null;
 
   function stopSpeech() {
     speechQueue = [];
@@ -1507,6 +1508,29 @@
     const text = inputEl.value.trim();
     if (!text && pendingAttachments.length === 0) return;
 
+    if (pendingSpokenReferences && /^(yes|yeah|sure|yep|please|yes please|certainly|indeed|i would|tell me|read them)\b/i.test(text.replace(/[.,!?]/g, '').trim())) {
+      const refsToRead = pendingSpokenReferences;
+      pendingSpokenReferences = null;
+      inputEl.value = '';
+      autoResizeInput();
+      addUserMessage(text);
+      state.history.push({ role: 'user', parts: [{ text }] });
+      const ackText = `Certainly, ${state.honorific}. Reading the references now.`;
+      const { row, bubble } = messageRow('model');
+      bubble.innerHTML = `<span style="font-family:var(--font-display); font-size:17.5px; color:var(--parchment);">${ackText}</span>`;
+      if (chatEl) chatEl.appendChild(row);
+      scrollToBottom();
+      state.history.push({ role: 'model', parts: [{ text: ackText }], model: getModelForConvoType(state.convoType), timestamp: Date.now() });
+      persistHistory();
+      if (isAutoSpeakEnabled) {
+        stopSpeech();
+        speak(refsToRead);
+        speak(`Is there anything else I may assist you with, ${state.honorific}?`);
+      }
+      return;
+    }
+    pendingSpokenReferences = null;
+
     if (!state.apiKey || !state.model) {
       openModal();
       setStatus('error', 'Jeeves requires an API key and a selected model before he may be of assistance.');
@@ -1645,26 +1669,19 @@
             renderMarkdownInto(modelBubble, fullText);
 
             if (isAutoSpeakEnabled) {
-              let unspoken = fullText.slice(speechIndex);
+              const refMatch = fullText.match(/(?:^|\n)\s*(?:#{1,4}|\*\*)\s*(?:references|sources|citations)\b/i);
+              const limit = refMatch ? refMatch.index : fullText.length;
+              let unspoken = fullText.slice(speechIndex, limit);
               let match;
               while ((match = unspoken.match(/^[\s\S]*?[.!?](?=\s|$)/))) {
                 const sentence = match[0].trim();
                 speechIndex += match[0].length;
                 if (sentence) speak(sentence);
-                unspoken = fullText.slice(speechIndex);
+                unspoken = fullText.slice(speechIndex, limit);
               }
             }
           }
-
-          if (candidate.finishReason && candidate.finishReason !== 'STOP') {
-            fullText += `\n\n*(Response ended early: ${candidate.finishReason}. You may wish to ask Jeeves to continue.)*`;
-          }
         }
-      }
-
-      if (isAutoSpeakEnabled && speechIndex < fullText.length) {
-        const remaining = fullText.slice(speechIndex).trim();
-        if (remaining) speak(remaining);
       }
 
       // Grounding chunks contain the REAL, verified URIs Google Search found —
@@ -1672,6 +1689,22 @@
       if (searchGroundingChunks.length) {
         fullText = applyGroundingFootnotes(fullText, searchGroundingChunks, searchGroundingSupports);
         renderMarkdownInto(modelBubble, fullText);
+      }
+
+      if (isAutoSpeakEnabled) {
+        const refMatch = fullText.match(/(?:^|\n)\s*(?:#{1,4}|\*\*)\s*(?:references|sources|citations)\b/i);
+        if (refMatch) {
+          if (speechIndex < refMatch.index) {
+            const trailing = fullText.slice(speechIndex, refMatch.index).trim();
+            if (trailing) speak(trailing);
+            speechIndex = refMatch.index;
+          }
+          pendingSpokenReferences = fullText.slice(refMatch.index).trim();
+          speak(`Would you like the references for this information, ${state.honorific}, or is there anything else I can help you with?`);
+        } else if (speechIndex < fullText.length) {
+          const remaining = fullText.slice(speechIndex).trim();
+          if (remaining) speak(remaining);
+        }
       }
 
       // Auto-close any unbalanced code fence before it's rendered or saved,
