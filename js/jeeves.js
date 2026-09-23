@@ -929,10 +929,18 @@
       .replace(/"([^"\n]+)"/g, ' quote, $1, end quote. ');
     cleanText = cleanText.replace(/&mdash;|—/g, '. ');
     cleanText = cleanText.replace(/&[a-z0-9#]+;/gi, ' ');
-    cleanText = cleanText.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1, link.');
+    // Action button links (Maps, Calendar, Email, SMS, Tel): speak only the button label
+    cleanText = cleanText.replace(/\[([^\]]+)\]\((?:https?:\/\/(?:[a-z0-9-]+\.)*(?:calendar\.google\.com\vert{}google\.com\/maps\vert{}maps\.google\.com\vert{}maps\.apple\.com\vert{}goo\.gl\/maps\vert{}maps\.app\.goo\.gl\vert{}waze\.com)\vert{}mailto:\vert{}sms:\vert{}tel:\vert{}geo:)[^)]*\)/gi, '$1. ');
+
+    // Standard markdown links: speak label + ", link.", or just "link" if the label is a URL
+    cleanText = cleanText.replace(/\[([^\]]+)\]\([^)]+\)/g, (match, label) => {
+      return /^https?:\/\/|^www\./i.test(label.trim()) ? 'link.' : `${label}, link.`;
+    });
+
     cleanText = cleanText.replace(/\[(\d+(?:\s*,\s*\d+)*)\]/g, (m, g) => ' footnote ' + g.split(',').map(n => n.trim()).join(', footnote ') + '. ');
     cleanText = cleanText.replace(/\n+/g, '. ');
-    cleanText = cleanText.replace(/https?:\/\/\S+/g, '');
+    cleanText = cleanText.replace(/https?:\/\/\S+|www\.\S+/gi, '');
+    cleanText = cleanText.replace(/(mailto|sms|tel|geo):\S+/gi, '');
     cleanText = cleanText.replace(/<[^>]*>/g, '').trim();
 
     if (cleanText) {
