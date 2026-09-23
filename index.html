@@ -121,101 +121,137 @@
         </button>
       </div>
       <div class="modal-body">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-          <button id="auth-btn">Sign In with Google</button>
-          <span id="auth-user-status" style="font-size: 12px; opacity: 0.8; font-style: italic;"></span>
-        </div>
-
         <div id="status-area"></div>
 
-        <div class="field">
-          <label for="api-key">Google Gemini API Key</label>
-          <div class="key-row">
-            <input type="password" id="api-key" placeholder="AIza...">
-            <button type="button" id="toggle-key">Show</button>
+        <!-- SECTION I: Credentials & Access -->
+        <section class="settings-section">
+          <div class="section-header">
+            <span class="section-numeral">I</span>
+            <h3 class="section-title">Credentials & Access</h3>
           </div>
-          <p class="field-help">Stored only in this browser's local storage. Required for Gemini model queries and Cloud TTS speech synthesis. Get a key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.</p>
-        </div>
 
-        <div class="field">
-          <label for="model-select">Model</label>
-          <div class="key-row">
-            <select id="model-select" disabled style="flex:1;">
-              <option value="">Enter a valid API key to fetch available models…</option>
-            </select>
-            <button type="button" id="verify-model-btn">Verify</button>
+          <div class="auth-banner">
+            <button id="auth-btn" type="button">Sign In with Google</button>
+            <span id="auth-user-status" style="font-size: 12px; opacity: 0.8; font-style: italic;"></span>
           </div>
-          <p class="field-help" id="model-help-text">Populated directly from Google's model catalogue. Google's listing doesn't reveal which models are actually usable by your key — click "Verify" to send a minimal test request and confirm.</p>
-          <p class="field-help" id="hidden-models-note" style="display:none;"></p>
-        </div>
 
-        <div class="field" id="mode-model-overrides-field">
-          <label>Model per Mode (optional)</label>
-          <p class="field-help" style="margin-top:0;">Leave a mode on "Use default model" to fall back to the model selected above. Handy when one mode — like Research — needs a model that actually returns Search grounding data.</p>
-          <div class="key-row" style="margin-bottom:8px;">
-            <label style="width:100px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:13px;">💬 General</label>
-            <select id="model-override-general" style="flex:1;" disabled><option value="">Use default model</option></select>
-          </div>
-          <div class="key-row" style="margin-bottom:8px;">
-            <label style="width:100px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:13px;">💻 Coding</label>
-            <select id="model-override-coding" style="flex:1;" disabled><option value="">Use default model</option></select>
-          </div>
-          <div class="key-row" style="margin-bottom:8px;">
-            <label style="width:100px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:13px;">🍳 Cooking</label>
-            <select id="model-override-cooking" style="flex:1;" disabled><option value="">Use default model</option></select>
-          </div>
-          <div class="key-row">
-            <label style="width:100px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:13px;">📚 Research</label>
-            <select id="model-override-research" style="flex:1;" disabled><option value="">Use default model</option></select>
-          </div>
-        </div>
-
-        <div class="field">
-          <label for="honorific">Preferred Honorific</label>
-          <input type="text" id="honorific" placeholder="Sir">
-          <p class="field-help">How Jeeves ought to address you — e.g. "Sir", "Madam", "Master Wooster".</p>
-        </div>
-
-        <div class="field">
-          <label for="tts-rate-slider">Speech Speed (<span id="tts-rate-val">1.00</span>x)</label>
-          <div style="display:flex; align-items:center; gap:10px;">
-            <input type="range" id="tts-rate-slider" min="0.5" max="2.0" step="0.05" value="1.0">
-            <input type="number" id="tts-rate-input" min="0.5" max="2.0" step="0.05" value="1.0" style="width:75px;">
-          </div>
-          <p class="field-help">Adjust the playback speed of Jeeves' voice output (0.5x to 2.0x).</p>
-        </div>
-
-        <div class="field">
-          <label>Interface Theme</label>
-          <div class="theme-radio-group">
-            <label><input type="radio" name="theme" value="light" checked> Light Parchment (Default)</label>
-            <label><input type="radio" name="theme" value="dark"> Dark Parchment</label>
-          </div>
-        </div>
-
-        <div class="field">
-          <label>Cost tracking (optional)</label>
-          <p class="field-help" style="margin-top:0;margin-bottom:10px;">Pricing shifts often and varies by model, so Jeeves won't guess it. Enter your own rate from <a href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noopener">Google's live pricing page</a> and Jeeves will total it up per message.</p>
-          <label style="display:flex; align-items:center; gap:8px; text-transform:none; letter-spacing:0; font-size:13px; color:var(--parchment-dim); cursor:pointer; margin-bottom:10px;">
-            <input type="checkbox" id="free-tier-check" style="width:auto;">
-            This model costs me nothing (free tier)
-          </label>
-          <div id="pricing-inputs" style="display:flex; gap:10px;">
-            <div style="flex:1;">
-              <label for="price-input" style="margin-bottom:5px;">$ / 1M input tokens</label>
-              <input type="text" id="price-input" inputmode="decimal" placeholder="e.g. 0.25">
+          <div class="field" style="margin-bottom:0;">
+            <label for="api-key">Google Gemini API Key</label>
+            <div class="key-row">
+              <input type="password" id="api-key" placeholder="AIza...">
+              <button type="button" id="toggle-key">Show</button>
             </div>
-            <div style="flex:1;">
-              <label for="price-output" style="margin-bottom:5px;">$ / 1M output tokens</label>
-              <input type="text" id="price-output" inputmode="decimal" placeholder="e.g. 1.50">
+            <p class="field-help">Obtain an official API key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.</p>
+            <p class="field-help" style="margin-top:6px;"><strong>Note for Cloud Speech:</strong> Ensure the <a href="https://console.cloud.google.com/apis/library/texttospeech.googleapis.com" target="_blank" rel="noopener">Cloud Text-to-Speech API</a> is enabled on the same Google Cloud project, and that any key restrictions allow it.</p>
+          </div>
+        </section>
+
+        <!-- SECTION II: Model Selection & Mode Overrides -->
+        <section class="settings-section">
+          <div class="section-header">
+            <span class="section-numeral">II</span>
+            <h3 class="section-title">Model Orchestration</h3>
+          </div>
+
+          <div class="field">
+            <label for="model-select">Primary Intelligence Model</label>
+            <div class="key-row">
+              <select id="model-select" disabled style="flex:1;">
+                <option value="">Enter a valid API key to fetch available models…</option>
+              </select>
+              <button type="button" id="verify-model-btn">Verify</button>
+            </div>
+            <p class="field-help" id="model-help-text">Populated directly from Google's model catalogue. Google's listing doesn't reveal which models are actually usable by your key — click "Verify" to send a minimal test request and confirm.</p>
+            <p class="field-help" id="hidden-models-note" style="display:none;"></p>
+          </div>
+
+          <!-- Mode Overrides inside collapsible accordion -->
+          <details class="overrides-details" id="mode-model-overrides-field" style="margin-top:10px;">
+            <summary>Specialized Mode Overrides (Optional)</summary>
+            <p class="field-help" style="margin:8px 0 10px;">Leave any mode on "Use default model" to fall back to the primary model above.</p>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div class="key-row" style="align-items:center;">
+                <label style="width:110px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:12.5px; color:var(--parchment-dim); margin:0;">💬 General</label>
+                <select id="model-override-general" style="flex:1; font-size:12.5px; padding:6px 10px;" disabled><option value="">Use default model</option></select>
+              </div>
+              <div class="key-row" style="align-items:center;">
+                <label style="width:110px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:12.5px; color:var(--parchment-dim); margin:0;">💻 Coding</label>
+                <select id="model-override-coding" style="flex:1; font-size:12.5px; padding:6px 10px;" disabled><option value="">Use default model</option></select>
+              </div>
+              <div class="key-row" style="align-items:center;">
+                <label style="width:110px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:12.5px; color:var(--parchment-dim); margin:0;">🍳 Cooking</label>
+                <select id="model-override-cooking" style="flex:1; font-size:12.5px; padding:6px 10px;" disabled><option value="">Use default model</option></select>
+              </div>
+              <div class="key-row" style="align-items:center;">
+                <label style="width:110px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:12.5px; color:var(--brass-bright); font-weight:600; margin:0;">📚 Research</label>
+                <select id="model-override-research" style="flex:1; font-size:12.5px; padding:6px 10px;" disabled><option value="">Use default model</option></select>
+              </div>
+            </div>
+          </details>
+        </section>
+
+        <!-- SECTION III: Persona & Auditory Nuance -->
+        <section class="settings-section">
+          <div class="section-header">
+            <span class="section-numeral">III</span>
+            <h3 class="section-title">Persona & Auditory Nuance</h3>
+          </div>
+
+          <div class="field">
+            <label for="honorific">Preferred Honorific</label>
+            <input type="text" id="honorific" placeholder="Sir">
+            <p class="field-help">How Jeeves ought to address you — e.g. "Sir", "Madam", "Master Wooster".</p>
+          </div>
+
+          <div class="field">
+            <label for="tts-rate-slider">Speech Speed (<span id="tts-rate-val">1.00</span>x)</label>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <input type="range" id="tts-rate-slider" min="0.5" max="2.0" step="0.05" value="1.0">
+              <input type="number" id="tts-rate-input" min="0.5" max="2.0" step="0.05" value="1.0" style="width:75px; text-align:center;">
+              <button type="button" id="test-voice-btn" class="btn-secondary-sm" style="height:36px; padding:0 12px; border-radius:8px;">Test Voice</button>
+            </div>
+            <p class="field-help">Adjust playback speed (0.5x to 2.0x). Tap "Test Voice" to unlock audio playback and confirm speech settings on your device.</p>
+            <p class="field-help" style="margin-top:4px;"><strong>PWA & Mobile Tip:</strong> If no sound plays, ensure your device's physical Silent/Ringer switch is set to ring and media volume is turned up.</p>
+          </div>
+
+          <div class="field" style="margin-bottom:0;">
+            <label>Interface Theme</label>
+            <div class="theme-radio-group">
+              <label><input type="radio" name="theme" value="light" checked> Light Parchment (Default)</label>
+              <label><input type="radio" name="theme" value="dark"> Dark Parchment</label>
             </div>
           </div>
-          <p class="field-help" id="session-total-note"></p>
-        </div>
+        </section>
+
+        <!-- SECTION IV: Ledger & Cost Accounting -->
+        <section class="settings-section">
+          <div class="section-header">
+            <span class="section-numeral">IV</span>
+            <h3 class="section-title">Ledger & Cost Accounting</h3>
+          </div>
+
+          <div class="field" style="margin-bottom:0;">
+            <label style="display:flex; align-items:center; gap:8px; text-transform:none; letter-spacing:0; font-size:13px; color:var(--parchment-dim); cursor:pointer; margin-bottom:10px;">
+              <input type="checkbox" id="free-tier-check" style="width:auto;">
+              This model costs me nothing (free tier)
+            </label>
+            <div id="pricing-inputs" style="display:flex; gap:10px;">
+              <div style="flex:1;">
+                <label for="price-input" style="font-size:10px; color:var(--mist); text-transform:uppercase; margin-bottom:5px;">$ / 1M input tokens</label>
+                <input type="text" id="price-input" inputmode="decimal" placeholder="e.g. 0.25">
+              </div>
+              <div style="flex:1;">
+                <label for="price-output" style="font-size:10px; color:var(--mist); text-transform:uppercase; margin-bottom:5px;">$ / 1M output tokens</label>
+                <input type="text" id="price-output" inputmode="decimal" placeholder="e.g. 1.50">
+              </div>
+            </div>
+            <p class="field-help" style="margin-top:8px;">Pricing shifts often and varies by model. Enter your rate from <a href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noopener">Google's live pricing page</a>.</p>
+            <p class="field-help" id="session-total-note"></p>
+          </div>
+        </section>
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" id="refresh-app-btn" type="button" title="Purge cached files and reload the latest version">Update application</button>
-        <button class="btn-secondary" id="clear-history-btn">Clear conversation</button>
         <button class="btn-primary" id="save-settings-btn">Save</button>
       </div>
 

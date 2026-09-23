@@ -1,0 +1,454 @@
+<style>
+  [data-theme="light"] {
+    --ink-deep: #f5efe2;
+    --ink-panel: #e6dcc8;
+    --ink-panel-2: #ded1b9;
+    --parchment: #1c2820;
+    --parchment-dim: #4a594f;
+    --brass: #8c642d;
+    --brass-bright: #6e4c1d;
+    --mist: #52695c;
+    --hairline: rgba(140, 100, 45, 0.25);
+    --shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  }
+  
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(ellipse at top, rgba(184, 146, 90, 0.08), transparent 65%), var(--ink-deep);
+    font-family: var(--font-ui);
+    color: var(--parchment);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+  }
+  
+  /* Modal Wrapper simulating Jeeves modal */
+  .modal-frame {
+    background: var(--ink-panel);
+    border: 1px solid var(--hairline);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    width: 100%;
+    max-width: 580px;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  
+  .modal-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--hairline);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(180deg, rgba(255,255,255,0.03), transparent);
+  }
+  .modal-header-text h2 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--parchment);
+    letter-spacing: 0.4px;
+  }
+  .modal-header-text p {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: var(--mist);
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+  }
+  
+  .close-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--parchment-dim);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+  .close-btn:hover {
+    border-color: var(--hairline);
+    color: var(--brass-bright);
+    background: rgba(184, 146, 90, 0.08);
+  }
+  
+  .modal-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  
+  /* Section Cards with Subtle Accent Badges */
+  .settings-section {
+    background: var(--ink-panel-2);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    padding: 16px 18px 18px;
+    position: relative;
+  }
+  
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(184, 146, 90, 0.15);
+  }
+  
+  .section-numeral {
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--brass-bright);
+    background: rgba(184, 146, 90, 0.15);
+    border: 1px solid var(--hairline);
+    padding: 1px 7px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+  }
+  
+  .section-title {
+    font-family: var(--font-display);
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--parchment);
+    letter-spacing: 0.5px;
+    margin: 0;
+    flex: 1;
+  }
+  
+  /* Field Layouts */
+  .field {
+    margin-bottom: 14px;
+  }
+  .field:last-child {
+    margin-bottom: 0;
+  }
+  .field > label {
+    display: block;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.9px;
+    color: var(--parchment-dim);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  
+  .field-help {
+    font-size: 11.5px;
+    color: var(--mist);
+    margin: 6px 0 0;
+    line-height: 1.45;
+  }
+  .field-help a {
+    color: var(--brass-bright);
+    text-decoration: none;
+  }
+  .field-help a:hover {
+    text-decoration: underline;
+  }
+  
+  input[type="text"], input[type="password"], input[type="number"], select {
+    width: 100%;
+    background: var(--ink-deep);
+    border: 1px solid var(--hairline);
+    color: var(--parchment);
+    font-family: var(--font-ui);
+    font-size: 13.5px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  input:focus, select:focus {
+    border-color: var(--brass-bright);
+  }
+  
+  .key-row {
+    display: flex;
+    gap: 8px;
+  }
+  
+  .btn-secondary-sm {
+    background: transparent;
+    border: 1px solid var(--hairline);
+    color: var(--parchment-dim);
+    border-radius: 8px;
+    padding: 0 14px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.18s;
+    white-space: nowrap;
+  }
+  .btn-secondary-sm:hover {
+    border-color: var(--brass);
+    color: var(--brass-bright);
+    background: rgba(184, 146, 90, 0.08);
+  }
+  
+  /* Account badge bar */
+  .auth-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: var(--ink-deep);
+    border: 1px solid var(--hairline);
+    margin-bottom: 12px;
+  }
+  .auth-banner button {
+    background: var(--brass);
+    color: var(--ink-deep);
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .auth-banner button:hover {
+    background: var(--brass-bright);
+  }
+  
+  /* Range slider custom styling */
+  input[type="range"] {
+    flex: 1;
+    accent-color: var(--brass-bright);
+    cursor: pointer;
+  }
+  
+  /* Theme Radio Group */
+  .theme-radio-group {
+    display: flex;
+    background: var(--ink-deep);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    padding: 3px;
+    gap: 4px;
+  }
+  .theme-radio-group label {
+    flex: 1;
+    text-align: center;
+    padding: 7px;
+    font-size: 12px;
+    color: var(--parchment-dim);
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .theme-radio-group input { display: none; }
+  .theme-radio-group label:has(input:checked) {
+    background: var(--brass);
+    color: var(--ink-deep);
+    font-weight: 600;
+  }
+  
+  /* Modal Footer */
+  .modal-footer {
+    padding: 16px 24px;
+    display: flex;
+    gap: 10px;
+    border-top: 1px solid var(--hairline);
+    background: linear-gradient(0deg, rgba(0,0,0,0.1), transparent);
+  }
+  .btn-primary, .btn-secondary {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 9px;
+    font-family: var(--font-ui);
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .btn-primary {
+    background: var(--brass);
+    border: 1px solid var(--brass);
+    color: var(--ink-deep);
+  }
+  .btn-primary:hover { background: var(--brass-bright); }
+  .btn-secondary {
+    background: transparent;
+    border: 1px solid var(--hairline);
+    color: var(--parchment-dim);
+  }
+  .btn-secondary:hover {
+    border-color: var(--claret);
+    color: var(--claret);
+  }
+  
+  /* Collapsible mode overrides toggle */
+  details.overrides-details summary {
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--brass-bright);
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+  }
+  details.overrides-details summary::-webkit-details-marker { display: none; }
+  details.overrides-details summary::before {
+    content: "▸";
+    display: inline-block;
+    transition: transform 0.2s;
+  }
+  details.overrides-details[open] summary::before {
+    transform: rotate(90deg);
+  }
+</style>
+
+
+<!-- Body / Sections -->
+<div class="modal-body">
+
+  <!-- SECTION 1: Credentials & Cloud -->
+  <section class="settings-section">
+    <div class="section-header">
+      <span class="section-numeral">I</span>
+      <h3 class="section-title">Credentials & Access</h3>
+    </div>
+
+    <div class="auth-banner">
+      <span style="font-size:12.5px; color:var(--parchment-dim);">Cloud Synchronization:</span>
+      <button id="demo-auth-btn" type="button">Sign In with Google</button>
+    </div>
+
+    <div class="field">
+      <label for="api-key">Google Gemini API Key</label>
+      <div class="key-row">
+        <input type="password" id="api-key" placeholder="AIzaSy..." value="AIzaSyDemoKeyExample78192">
+        <button class="btn-secondary-sm" type="button">Show</button>
+      </div>
+      <p class="field-help">Stored only in this browser's local cache. Enables both generative model queries and Cloud TTS speech synthesis. Obtain an official key at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a>.</p>
+    </div>
+  </section>
+
+  <!-- SECTION 2: Model Selection & Mode Overrides -->
+  <section class="settings-section">
+    <div class="section-header">
+      <span class="section-numeral">II</span>
+      <h3 class="section-title">Model Orchestration</h3>
+    </div>
+
+    <div class="field">
+      <label for="model-select">Primary Intelligence Model</label>
+      <div class="key-row">
+        <select id="model-select" style="flex:1;">
+          <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite ★ Recommended</option>
+          <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+          <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+        </select>
+        <button class="btn-secondary-sm" type="button">Verify</button>
+      </div>
+      <p class="field-help">Click "Verify" to execute a live, minimal ping confirming your API key retains access to the chosen model catalogue.</p>
+    </div>
+
+    <!-- Mode Overrides Group -->
+    <details class="overrides-details" style="margin-top:10px;">
+      <summary>Specialized Mode Overrides (Optional)</summary>
+      <div style="padding-top:10px; display:flex; flex-direction:column; gap:8px;">
+        <div class="key-row" style="align-items:center;">
+          <label style="width:110px; font-size:12px; color:var(--parchment-dim); text-transform:none; margin:0;">💬 General</label>
+          <select style="flex:1; font-size:12.5px; padding:6px 10px;"><option>Use default model</option></select>
+        </div>
+        <div class="key-row" style="align-items:center;">
+          <label style="width:110px; font-size:12px; color:var(--parchment-dim); text-transform:none; margin:0;">💻 Coding</label>
+          <select style="flex:1; font-size:12.5px; padding:6px 10px;"><option>Use default model</option></select>
+        </div>
+        <div class="key-row" style="align-items:center;">
+          <label style="width:110px; font-size:12px; color:var(--parchment-dim); text-transform:none; margin:0;">🍳 Culinary</label>
+          <select style="flex:1; font-size:12.5px; padding:6px 10px;"><option>Use default model</option></select>
+        </div>
+        <div class="key-row" style="align-items:center;">
+          <label style="width:110px; font-size:12px; color:var(--brass-bright); font-weight:600; text-transform:none; margin:0;">📚 Research</label>
+          <select style="flex:1; font-size:12.5px; padding:6px 10px;"><option>Use default model</option></select>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <!-- SECTION 3: Persona, Audio & Appearance -->
+  <section class="settings-section">
+    <div class="section-header">
+      <span class="section-numeral">III</span>
+      <h3 class="section-title">Persona & Auditory Nuance</h3>
+    </div>
+
+    <div class="field">
+      <label for="honorific">Preferred Honorific</label>
+      <input type="text" id="honorific" value="Sir" placeholder="Sir, Madam, Master Wooster...">
+      <p class="field-help">Determines how Jeeves shall address you throughout your consultations.</p>
+    </div>
+
+    <div class="field">
+      <label for="demo-rate-slider">Speech Rate (<span id="demo-rate-val" style="color:var(--brass-bright);">1.25</span>x)</label>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <input type="range" id="demo-rate-slider" min="0.5" max="2.0" step="0.05" value="1.25">
+        <input type="number" id="demo-rate-input" min="0.5" max="2.0" step="0.05" value="1.25" style="width:75px; text-align:center;">
+      </div>
+      <p class="field-help">Controls both the cloud synthesis request cadence and local audio playback velocity.</p>
+    </div>
+
+    <div class="field">
+      <label>Visual Presentation</label>
+      <div class="theme-radio-group">
+        <label><input type="radio" name="demo-theme" value="light"> Light Parchment</label>
+        <label><input type="radio" name="demo-theme" value="dark" checked> Dark Parchment</label>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 4: Ledger & Token Accounting -->
+  <section class="settings-section">
+    <div class="section-header">
+      <span class="section-numeral">IV</span>
+      <h3 class="section-title">Ledger & Cost Accounting</h3>
+    </div>
+
+    <div class="field">
+      <label style="display:flex; align-items:center; gap:8px; text-transform:none; letter-spacing:0; font-size:13px; color:var(--parchment-dim); cursor:pointer; margin-bottom:8px;">
+        <input type="checkbox" id="demo-free-check" style="width:auto;">
+        This model operates on Google's Free Tier ($0.00)
+      </label>
+      <div id="demo-pricing-wrap" style="display:flex; gap:10px;">
+        <div style="flex:1;">
+          <label style="font-size:10px; color:var(--mist); text-transform:uppercase;">$ / 1M Input Tokens</label>
+          <input type="text" value="0.25">
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:10px; color:var(--mist); text-transform:uppercase;">$ / 1M Output Tokens</label>
+          <input type="text" value="1.50">
+        </div>
+      </div>
+      <p class="field-help">Enter rates from Google's pricing sheet. Jeeves calculates running totals on every turn.</p>
+    </div>
+  </section>
+
+</div>
+
+<!-- Footer Controls -->
+<div class="modal-footer">
+  <button class="btn-secondary" type="button">Update App</button>
+  <button class="btn-secondary" type="button">Clear History</button>
+  <button class="btn-primary" type="button">Save Settings</button>
+</div>

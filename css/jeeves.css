@@ -756,24 +756,73 @@ header.letterhead{
     margin-bottom:7px;
   }
 
-  .modal-content {.  /*delete? dead weight?*/
-    background-color: #fefefe;
-    margin: 5% auto;
-    padding: 20px;
-    border: 1px solid #888;
-    width: 80%;
-    max-width: 500px;
+  /* Settings Section Cards & Headers */
+  .settings-section {
+    background: var(--ink-panel-2);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    padding: 16px 18px 18px;
+    margin-bottom: 18px;
+  }
+  .settings-section:last-child { margin-bottom: 0; }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(184, 146, 90, 0.15);
+  }
+  .section-numeral {
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--brass-bright);
+    background: rgba(184, 146, 90, 0.15);
+    border: 1px solid var(--hairline);
+    padding: 1px 7px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+  }
+  .section-title {
+    font-family: var(--font-display);
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--parchment);
+    letter-spacing: 0.5px;
+    margin: 0;
+    flex: 1;
+  }
+  .auth-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
     border-radius: 8px;
+    background: var(--ink-deep);
+    border: 1px solid var(--hairline);
+    margin-bottom: 14px;
   }
-
-  /* Section Separation */
-  .modal-content section {. /*delete? dead weight?*/
-    padding: 15px 0;
-    border-bottom: 1px solid #eee;
+  details.overrides-details summary {
+    cursor: pointer;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--brass-bright);
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
   }
-
-  .modal-content section:last-of-type {  /*delete? dead weight?*/
-    border-bottom: none;
+  details.overrides-details summary::-webkit-details-marker { display: none; }
+  details.overrides-details summary::before {
+    content: "▸";
+    display: inline-block;
+    transition: transform 0.2s;
+  }
+  details.overrides-details[open] summary::before {
+    transform: rotate(90deg);
   }
 
   /* Footer Styling */
@@ -1053,3 +1102,5 @@ header.letterhead{
     .bubble{ max-width:88%; font-size:15px; }
     .msg-row.model .bubble{ font-size:16.5px; }
   }
+
+

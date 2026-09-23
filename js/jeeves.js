@@ -942,20 +942,20 @@
       if (quota < 980000) {
         try {
           const ttsPayload = { text: cleanText, rate: state.ttsRate, speakingRate: state.ttsRate, userId: window.auth?.currentUser?.uid };
-          console.log('Jeeves TTS Payload:', ttsPayload);
+          // console.log('Jeeves TTS Payload:', ttsPayload);
           const resp = await fetch('https://us-central1-jeeves-login-6391e.cloudfunctions.net/synthesizeSpeech', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(ttsPayload)
           });
           if (resp.ok) {
-            console.log('Cloud TTS HTTP status:', resp.status, '| Requested rate:', state.ttsRate);
+            // console.log('Cloud TTS HTTP status:', resp.status, '| Requested rate:', state.ttsRate);
             const blob = await resp.blob();
             const url = URL.createObjectURL(blob);
             await new Promise((resolve) => {
               ttsAudio.src = url;
               ttsAudio.playbackRate = state.ttsRate || 1.0;
-              console.log('HTML5 Audio active playbackRate:', ttsAudio.playbackRate);
+              // console.log('HTML5 Audio active playbackRate:', ttsAudio.playbackRate);
               ttsAudio.onended = resolve;
               ttsAudio.onerror = resolve;
               ttsAudio.play().catch(resolve);
@@ -1616,11 +1616,11 @@
           if (!candidate) continue;
 
           if (candidate.groundingMetadata) {
-            console.log('Jeeves: groundingMetadata received —', {
-              chunkCount: (candidate.groundingMetadata.groundingChunks || []).length,
-              supportCount: (candidate.groundingMetadata.groundingSupports || []).length,
-              raw: candidate.groundingMetadata
-            });
+            // console.log('Jeeves: groundingMetadata received —', {
+            //   chunkCount: (candidate.groundingMetadata.groundingChunks || []).length,
+            //   supportCount: (candidate.groundingMetadata.groundingSupports || []).length,
+            //   raw: candidate.groundingMetadata
+            // });
             if (candidate.groundingMetadata.groundingChunks) searchGroundingChunks = candidate.groundingMetadata.groundingChunks;
             if (candidate.groundingMetadata.groundingSupports) searchGroundingSupports = candidate.groundingMetadata.groundingSupports;
           }
@@ -1990,6 +1990,15 @@
 
   document.querySelectorAll('input[name="theme"]').forEach(radio => {
     radio.addEventListener('change', (e) => applyTheme(e.target.value));
+  });
+
+  const testVoiceBtn = document.getElementById('test-voice-btn');
+  testVoiceBtn?.addEventListener('click', () => {
+    unlockAudio();
+    const currentRate = parseFloat(document.getElementById('tts-rate-input')?.value) || state.ttsRate || 1.0;
+    state.ttsRate = currentRate;
+    stopSpeech();
+    speak(`At your service, ${state.honorific}. The vocal faculties appear in pristine working order.`);
   });
 
   const rateSlider = document.getElementById('tts-rate-slider');
