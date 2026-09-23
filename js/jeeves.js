@@ -73,6 +73,7 @@
     pricing: {},
     usageLog: JSON.parse(localStorage.getItem(LS_KEY_USAGE)) || [],
     ttsQuota: JSON.parse(localStorage.getItem(LS_KEY_TTS_QUOTA)) || { count: 0, month: '' },
+    ttsRate: parseFloat(localStorage.getItem('jeeves_tts_rate')) || 1.0,
   };
 
     // Falls back to the default model whenever a mode has no override set.
@@ -195,7 +196,7 @@
     const context = history.slice(0, 3).map(turn => turn.parts.map(p => p.text).join(' ')).join(' ').substring(0, 500);
     const url = `https://generativelanguage.googleapis.com/v1beta/${state.model}:generateContent?key=${encodeURIComponent(state.apiKey)}`;
     try {
-      const resp = await fetch('https://us-central1-jeeves-login-6391e.cloudfunctions.net/synthesizeSpeech', {
+      const resp = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -928,7 +929,9 @@
       .replace(/"([^"\n]+)"/g, ' quote, $1, end quote. ');
     cleanText = cleanText.replace(/&mdash;|—/g, '. ');
     cleanText = cleanText.replace(/&[a-z0-9#]+;/gi, ' ');
-    cleanText = cleanText.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+    cleanText = cleanText.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1, link.');
+    cleanText = cleanText.replace(/\[(\d+(?:\s*,\s*\d+)*)\]/g, (m, g) => ' footnote ' + g.split(',').map(n => n.trim()).join(', footnote ') + '. ');
+    cleanText = cleanText.replace(/\n+/g, '. ');
     cleanText = cleanText.replace(/https?:\/\/\S+/g, '');
     cleanText = cleanText.replace(/<[^>]*>/g, '').trim();
 
@@ -938,16 +941,21 @@
 
       if (quota < 980000) {
         try {
+          const ttsPayload = { text: cleanText, rate: state.ttsRate, speakingRate: state.ttsRate, userId: window.auth?.currentUser?.uid };
+          console.log('Jeeves TTS Payload:', ttsPayload);
           const resp = await fetch('https://us-central1-jeeves-login-6391e.cloudfunctions.net/synthesizeSpeech', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: cleanText, userId: auth.currentUser.uid })
+            body: JSON.stringify(ttsPayload)
           });
           if (resp.ok) {
+            console.log('Cloud TTS HTTP status:', resp.status, '| Requested rate:', state.ttsRate);
             const blob = await resp.blob();
             const url = URL.createObjectURL(blob);
             await new Promise((resolve) => {
               ttsAudio.src = url;
+              ttsAudio.playbackRate = state.ttsRate || 1.0;
+              console.log('HTML5 Audio active playbackRate:', ttsAudio.playbackRate);
               ttsAudio.onended = resolve;
               ttsAudio.onerror = resolve;
               ttsAudio.play().catch(resolve);
@@ -962,7 +970,7 @@
           const u = new SpeechSynthesisUtterance(cleanText);
           const voice = getJeevesVoice();
           if (voice) u.voice = voice;
-          u.rate = 1.0; u.pitch = 0.9;
+          u.rate = state.ttsRate || 1.0; u.pitch = 0.9;
           u.onend = resolve;
           u.onerror = resolve;
           speechSynthesis.speak(u);
@@ -1075,8 +1083,12 @@
     // Map of IDs to their corresponding state values
     const fields = {
       'api-key': state.apiKey,
-      'honorific': state.honorific
+      'honorific': state.honorific,
+      'tts-rate-slider': state.ttsRate,
+      'tts-rate-input': state.ttsRate
     };
+    const rateValEl = document.getElementById('tts-rate-val');
+    if (rateValEl) rateValEl.textContent = Number(state.ttsRate).toFixed(2);
 
     // Safely populate inputs
     Object.keys(fields).forEach(id => {
@@ -1305,6 +1317,8 @@
     state.honorific = newHonorific;
     state.theme = newTheme;
     state.model = newModel;
+    state.ttsRate = parseFloat(document.getElementById('tts-rate-input')?.value) || 1.0;
+    localStorage.setItem('jeeves_tts_rate', state.ttsRate);
 
     state.modelOverrides = {};
     Object.entries(overrideSelects).forEach(([type, sel]) => {
@@ -1977,6 +1991,20 @@
   document.querySelectorAll('input[name="theme"]').forEach(radio => {
     radio.addEventListener('change', (e) => applyTheme(e.target.value));
   });
+
+  const rateSlider = document.getElementById('tts-rate-slider');
+  const rateInput = document.getElementById('tts-rate-input');
+  const rateVal = document.getElementById('tts-rate-val');
+  if (rateSlider && rateInput && rateVal) {
+    rateSlider.addEventListener('input', (e) => {
+      rateInput.value = e.target.value;
+      rateVal.textContent = Number(e.target.value).toFixed(2);
+    });
+    rateInput.addEventListener('input', (e) => {
+      rateSlider.value = e.target.value;
+      rateVal.textContent = Number(e.target.value || 1.0).toFixed(2);
+    });
+  }
 
   modelSelect?.addEventListener('change', () => {
     loadPricingFieldsForModel(modelSelect.value);

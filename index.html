@@ -122,9 +122,9 @@
       </div>
       <div class="modal-body">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-        <button id="auth-btn">Sign In with Google</button>
-        <span id="auth-user-status" style="font-size: 12px; opacity: 0.8; font-style: italic;"></span>
-      </div>
+          <button id="auth-btn">Sign In with Google</button>
+          <span id="auth-user-status" style="font-size: 12px; opacity: 0.8; font-style: italic;"></span>
+        </div>
 
         <div id="status-area"></div>
 
@@ -134,23 +134,7 @@
             <input type="password" id="api-key" placeholder="AIza...">
             <button type="button" id="toggle-key">Show</button>
           </div>
-          <p class="field-help">Stored only in this browser's local storage. Get a key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.</p>
-        </div>
-
-        <div class="field">
-          <label>Interface Theme</label>
-          <div class="theme-radio-group">
-            <label><input type="radio" name="theme" value="light" checked> Light Parchment (Default)</label>
-            <label><input type="radio" name="theme" value="dark"> Dark Parchment</label>
-          </div>
-        </div>
-
-
-        <div class="field">
-          <label for="honorific">Preferred Honorific</label>
-
-          <input type="text" id="honorific" placeholder="Sir">
-          <p class="field-help">How Jeeves ought to address you — e.g. "Sir", "Madam", "Master Wooster".</p>
+          <p class="field-help">Stored only in this browser's local storage. Required for Gemini model queries and Cloud TTS speech synthesis. Get a key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.</p>
         </div>
 
         <div class="field">
@@ -181,8 +165,31 @@
             <select id="model-override-cooking" style="flex:1;" disabled><option value="">Use default model</option></select>
           </div>
           <div class="key-row">
-            <label style="width:100px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:13px;">🔍 Research</label>
+            <label style="width:100px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:13px;">📚 Research</label>
             <select id="model-override-research" style="flex:1;" disabled><option value="">Use default model</option></select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="honorific">Preferred Honorific</label>
+          <input type="text" id="honorific" placeholder="Sir">
+          <p class="field-help">How Jeeves ought to address you — e.g. "Sir", "Madam", "Master Wooster".</p>
+        </div>
+
+        <div class="field">
+          <label for="tts-rate-slider">Speech Speed (<span id="tts-rate-val">1.00</span>x)</label>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <input type="range" id="tts-rate-slider" min="0.5" max="2.0" step="0.05" value="1.0">
+            <input type="number" id="tts-rate-input" min="0.5" max="2.0" step="0.05" value="1.0" style="width:75px;">
+          </div>
+          <p class="field-help">Adjust the playback speed of Jeeves' voice output (0.5x to 2.0x).</p>
+        </div>
+
+        <div class="field">
+          <label>Interface Theme</label>
+          <div class="theme-radio-group">
+            <label><input type="radio" name="theme" value="light" checked> Light Parchment (Default)</label>
+            <label><input type="radio" name="theme" value="dark"> Dark Parchment</label>
           </div>
         </div>
 
