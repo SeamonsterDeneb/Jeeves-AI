@@ -1095,12 +1095,72 @@ header.letterhead{
   transform: translateX(-50%) translateY(0);
 }
 
-  @media (max-width:600px){
+  /* Speed control responsive row */
+  .speed-control-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .speed-control-row #test-voice-btn {
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
 
+  @media (max-width:600px){
     header.letterhead{ padding:12px 14px 10px; }
     .brand-text h1{ font-size:19px; }
-    .bubble{ max-width:88%; font-size:15px; }
-    .msg-row.model .bubble{ font-size:16.5px; }
+
+    /* Test voice button drops beneath slider on small screens */
+    .speed-control-row #test-voice-btn {
+      width: 100%;
+      margin-top: 4px;
+    }
+
+    /* Half-in / half-out avatar styling to maximize bubble width */
+    main#chat {
+      padding: 18px 8px 10px;
+      gap: 20px;
+    }
+    .msg-row {
+      position: relative;
+      margin: 0;
+      width: 100%;
+    }
+    .msg-row .avatar,
+    .msg-row .avatar-img {
+      position: absolute;
+      top: -10px;
+      z-index: 5;
+      width: 28px;
+      height: 28px;
+      margin: 0;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+    }
+    .msg-row.model .avatar-img {
+      left: 6px;
+    }
+    .msg-row.user .avatar {
+      right: 6px;
+    }
+    .bubble {
+      max-width: 95% !important;
+      font-size: 15px;
+      padding-top: 14px;
+    }
+    .msg-row.model .bubble {
+      font-size: 16.5px;
+      padding-left: 28px; /* subtle clearance for the crest */
+      margin-left: 10px;
+      margin-right: auto;
+    }
+    .msg-row.user .bubble {
+      padding-right: 28px; /* subtle clearance for the 'Y' badge */
+      margin-right: 10px;
+      margin-left: auto;
+    }
   }
 
 

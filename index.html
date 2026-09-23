@@ -205,10 +205,10 @@
 
           <div class="field">
             <label for="tts-rate-slider">Speech Speed (<span id="tts-rate-val">1.00</span>x)</label>
-            <div style="display:flex; align-items:center; gap:10px;">
+            <div class="speed-control-row">
               <input type="range" id="tts-rate-slider" min="0.5" max="2.0" step="0.05" value="1.0">
-              <input type="number" id="tts-rate-input" min="0.5" max="2.0" step="0.05" value="1.0" style="width:75px; text-align:center;">
-              <button type="button" id="test-voice-btn" class="btn-secondary-sm" style="height:36px; padding:0 12px; border-radius:8px;">Test Voice</button>
+              <input type="number" id="tts-rate-input" min="0.5" max="2.0" step="0.05" value="1.0" style="width:70px; text-align:center;">
+              <button type="button" id="test-voice-btn" class="btn-secondary-sm">Test Voice</button>
             </div>
             <p class="field-help">Adjust playback speed (0.5x to 2.0x). Tap "Test Voice" to unlock audio playback and confirm speech settings on your device.</p>
             <p class="field-help" style="margin-top:4px;"><strong>PWA & Mobile Tip:</strong> If no sound plays, ensure your device's physical Silent/Ringer switch is set to ring and media volume is turned up.</p>
