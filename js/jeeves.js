@@ -1836,9 +1836,12 @@
   let recognition = null;
   let isRecognitionActive = false;
 
+  let baseText = '';
+
   function startListening() {
     if (!recognition) return;
     try {
+      baseText = inputEl.value ? (inputEl.value.trim() + ' ') : '';
       isRecognitionActive = true;
       recognition.start();
     } catch (e) {
@@ -1848,6 +1851,7 @@
 
   function stopListening() {
     isRecognitionActive = false;
+    baseText = '';
     if (recognition) {
       try { recognition.stop(); } catch (e) {}
     }
@@ -1868,7 +1872,6 @@
       } else {
         unlockAudio();
         toggleAutoSpeak(true);
-        baseText = inputEl.value ? (inputEl.value.trim() + ' ') : '';
         startListening();
       }
     });
