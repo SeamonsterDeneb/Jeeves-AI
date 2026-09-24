@@ -600,7 +600,9 @@
 
         refEntries.forEach((entryHtml, idx) => {
           const num = idx + 1;
-          const cleanEntry = entryHtml.replace(/^(<sup[^>]*>.*?<\/sup>|\[?\d+\]?[:.]?)\s*/i, '');
+          const cleanEntry = entryHtml
+            .replace(/^<p>\s*/i, '<p>')
+            .replace(/(<p>)?(?:\d+\.|\(\d+\)|\[\d+\]|<sup[^>]*>.*?<\/sup>)\s*(?:\d+\.|\(\d+\)|\[\d+\]|<sup[^>]*>.*?<\/sup>)?\s*/i, '$1');
           const li = document.createElement('li');
           li.id = `ref-${scope}-${num}`;
           li.innerHTML = cleanEntry;
@@ -904,10 +906,12 @@
   let speechQueue = [];
   let isSpeaking = false;
   let pendingSpokenReferences = null;
+  let lastSpokenText = '';
 
   function stopSpeech() {
     speechQueue = [];
     isSpeaking = false;
+    lastSpokenText = '';
     ttsAudio.pause();
     if ('speechSynthesis' in window) speechSynthesis.cancel();
   }
@@ -921,6 +925,7 @@
   async function processSpeechQueue() {
     if (isSpeaking || speechQueue.length === 0) return;
     isSpeaking = true;
+    stopListening();
     const rawText = speechQueue.shift();
 
     let cleanText = rawText
@@ -953,6 +958,7 @@
     cleanText = cleanText.replace(/<[^>]*>/g, '').trim();
 
     if (cleanText) {
+      lastSpokenText = cleanText;
       const quota = getTtsQuota();
       let playedCloud = false;
 
@@ -998,9 +1004,10 @@
     isSpeaking = false;
     if (speechQueue.length > 0) {
       processSpeechQueue();
-    } else if (isAutoSpeakEnabled && pendingSpokenReferences) {
-      // Re-engage the microphone so you may respond hands-free
-      startListening();
+    } else if (isAutoSpeakEnabled) {
+      if (pendingSpokenReferences || /\?\s*$/.test(lastSpokenText)) {
+        startListening();
+      }
     }
   }
 
@@ -1075,7 +1082,7 @@
   // ---------- Persona ----------
     function buildSystemInstruction(){
     const h = (state.honorific || 'Sir').trim() || 'Sir';
-    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Always use Google Search to ground factual claims in authoritative sources. Every factual claim in your response MUST be followed immediately by an inline numeric citation marker in bare brackets (e.g. 'Northern flying squirrels are strictly nocturnal [1, 2].'). At the end of every response containing factual claims, provide a '### References' section formatted as a numbered list matching the inline markers: 1. According to [Source Name], [brief domain credibility note], [key finding as link text](URL). Never list a reference at the bottom that is not cited inline in the body text, and never place raw URLs in inline prose. Whenever you quote from great literature or notable historical figures, wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [&ldquo;the exact quoted text&rdquo;](https://www.google.com/search?q=%22the%20exact%20quoted%20text%22%20Author%20Name%20quote) &mdash; *Author Name*.
+    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Always use Google Search to ground factual claims in authoritative sources. Every factual claim in your response MUST be followed immediately by an inline numeric citation marker in bare brackets (e.g. 'Northern flying squirrels are strictly nocturnal [1, 2].'). At the end of every response containing factual claims, provide a '### References' section formatted as a numbered list matching the inline markers (e.g. According to [Source Name], [brief domain credibility note], [key finding as link text](URL)). Never list a reference at the bottom that is not cited inline in the body text, and never place raw URLs in inline prose. Whenever you quote from great literature or notable historical figures, wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [&ldquo;the exact quoted text&rdquo;](https://www.google.com/search?q=%22the%20exact%20quoted%20text%22%20Author%20Name%20quote) &mdash; *Author Name*.
 
         - Mobile Action Links: When scheduling, navigating, or composing drafts, proactively provide markdown links with actionable intents (e.g. [Add to Calendar](https://calendar.google.com/calendar/render?action=TEMPLATE&text=...), [Directions](https://www.google.com/maps/dir/?api=1&destination=...), [Send Email](mailto:...?subject=...&body=...), [Send SMS](sms:?body=...)).`;
     if (state.convoType === 'coding') {
@@ -1517,7 +1524,7 @@
   }
 
   async function sendMessage(){
-
+    stopListening();
     const text = inputEl.value.trim();
     if (!text && pendingAttachments.length === 0) return;
 
@@ -1537,7 +1544,8 @@
       persistHistory();
       if (isAutoSpeakEnabled) {
         stopSpeech();
-        speak(refsToRead);
+        const refLines = refsToRead.split(/\n+/).map(l => l.trim()).filter(l => l && !/^#{1,4}\s*references/i.test(l));
+        refLines.forEach(line => speak(line));
         speak(`Is there anything else I may assist you with, ${state.honorific}?`);
       }
       return;
