@@ -1820,23 +1820,43 @@
 
   // ---------- Speech Recognition ----------
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognition = null;
+  let isRecognitionActive = false;
+
+  function startListening() {
+    if (!recognition) return;
+    try {
+      isRecognitionActive = true;
+      recognition.start();
+    } catch (e) {
+      /* Recognition may already be running */
+    }
+  }
+
+  function stopListening() {
+    isRecognitionActive = false;
+    if (recognition) {
+      try { recognition.stop(); } catch (e) {}
+    }
+    if (micBtn) micBtn.classList.remove('listening');
+  }
+
   if (SpeechRecognition && micBtn) {
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
+    recognition = new SpeechRecognition();
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = navigator.language || 'en-US';
 
     let baseText = '';
 
-  // Inside the event listener for micBtn click:
     micBtn.addEventListener('click', () => {
       if (micBtn.classList.contains('listening')) {
-        recognition.stop();
+        stopListening();
       } else {
         unlockAudio();
         toggleAutoSpeak(true);
         baseText = inputEl.value ? (inputEl.value.trim() + ' ') : '';
-        try { recognition.start(); } catch(err) { console.log("Mic error:", err); }
+        startListening();
       }
     });
 
@@ -1844,27 +1864,47 @@
       micBtn.classList.add('listening');
     };
 
-    recognition.onspeechend = () => {
-      // Do nothing here. 
-      // By leaving this empty, we prevent the browser from 
-      // automatically shutting down the recording on a pause.
+    recognition.onend = () => {
+      if (isRecognitionActive) {
+        try { recognition.start(); } catch (e) {
+          micBtn.classList.remove('listening');
+        }
+      } else {
+        micBtn.classList.remove('listening');
+      }
     };
 
-    recognition.onend = () => {
-      micBtn.classList.remove('listening');
-    };
+    const TRIGGER_REGEX = /\b(?:what do you think|your thoughts|over to you|take it away|if you please|thank you),?\s*(?:jeeves|chief|geeves|jeevs|jeans)[\s.,!?]*$/i;
 
 
     recognition.onresult = (event) => {
-      let currentTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        currentTranscript += event.results[i][0].transcript;
-      }
-      inputEl.value = baseText + currentTranscript;
-      autoResizeInput();
-      inputEl.focus();
-    };
+      let interimTranscript = '';
+      let finalTranscript = '';
 
+      for (let i = 0; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript + ' ';
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+
+      let combined = (baseText + finalTranscript + interimTranscript).replace(/\s+/g, ' ');
+      
+      if (TRIGGER_REGEX.test(combined)) {
+        // Strip the trigger phrase so the prompt remains neat and clean
+        combined = combined.replace(TRIGGER_REGEX, '').trim();
+        inputEl.value = combined;
+        autoResizeInput();
+        stopListening();
+        sendMessage();
+        return;
+      }
+
+      inputEl.value = combined;
+      autoResizeInput();
+    };
 
   } else if (micBtn) {
     micBtn.style.display = 'none';
