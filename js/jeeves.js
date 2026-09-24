@@ -923,7 +923,15 @@
     isSpeaking = true;
     const rawText = speechQueue.shift();
 
-    let cleanText = rawText.replace(/(\*\*|__|\*|_|#)/g, '');
+    let cleanText = rawText
+      .replace(/```(?:copy|draft|quote)\b[^\n]*\n?/gi, ` Here is a note I have prepared for you to copy, ${state.honorific}: `)
+      .replace(/```[a-zA-Z0-9_-]*\b[^\n]*\n?/g, ' ')
+      .replace(/```/g, ' ')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/`+/g, '')
+      .replace(/(\*\*|__|\*|_|#)/g, '');
+
+
     cleanText = cleanText
       .replace(/&ldquo;|&#8220;|“/gi, ' quote, ')
       .replace(/&rdquo;|&#8221;|”/gi, ', end quote. ')
