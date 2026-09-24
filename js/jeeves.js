@@ -996,7 +996,12 @@
     }
 
     isSpeaking = false;
-    processSpeechQueue();
+    if (speechQueue.length > 0) {
+      processSpeechQueue();
+    } else if (isAutoSpeakEnabled && pendingSpokenReferences) {
+      // Re-engage the microphone so you may respond hands-free
+      startListening();
+    }
   }
 
 
@@ -1874,7 +1879,7 @@
       }
     };
 
-    const TRIGGER_REGEX = /\b(?:what do you think|your thoughts|over to you|take it away|if you please|thank you),?\s*(?:jeeves|chief|geeves|jeevs|jeans)[\s.,!?]*$/i;
+    const TRIGGER_REGEX = /\b(?:what do you think|your thoughts|over to you|take it away|if you please|thank you),?\s*(?:jeeves|chief|geeves|jeevs|jeans|teams)[\s.,!?]*$/i;
 
 
     recognition.onresult = (event) => {
