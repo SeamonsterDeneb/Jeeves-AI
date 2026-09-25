@@ -1090,9 +1090,15 @@ header.letterhead{
 
 .tooltip-btn:hover::after,
 .tooltip-btn:focus-visible::after {
-  opacity: 1;
   visibility: visible;
-  transform: translateX(-50%) translateY(0);
+  animation: tooltipAutoHide 1.4s ease forwards;
+}
+
+@keyframes tooltipAutoHide {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  15%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+  75%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(0); }
 }
 
   /* Speed control responsive row */

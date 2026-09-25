@@ -1946,7 +1946,7 @@
       }
     };
 
-    const TRIGGER_REGEX = /\b(?:what do you think|what do you say|your thoughts|over to you|take it away|if you please|thank you),?\s*(?:jeeves|chief|geeves|jeevs|jeans|teams)[\s.,!?]*$/i;
+        const TRIGGER_REGEX = /\b(?:what do you think|your thoughts|over to you|take it away|if you please|thank you),?\s*(?:jeeves|chiefs?|geeves|jeevs|jeans|teams)s?[\s.,!?]*$/i;
 
     recognition.onresult = (event) => {
       liveInterim = '';
