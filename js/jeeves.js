@@ -164,7 +164,7 @@
 
   let pendingAttachments = [];
 
-  const JEEVES_BUILD = 'voice-fix-2026-09-25a'; 
+  const JEEVES_BUILD = 'voice-fix-2026-09-25c'; 
 
 
   function applyTheme(themeName) {
@@ -1879,12 +1879,16 @@
   let baseText = '';
   let committedTranscript = '';
 
+  let isAutoRestart = false;
+
   function startListening() {
     if (!recognition) return;
     try {
       baseText = inputEl.value ? (inputEl.value.trim() + ' ') : '';
       committedTranscript = '';
+      liveInterim = '';
       isRecognitionActive = true;
+      isAutoRestart = false;
       recognition.start();
     } catch (e) {
       /* Recognition may already be running */
@@ -1903,7 +1907,7 @@
 
   if (SpeechRecognition && micBtn) {
     recognition = new SpeechRecognition();
-    recognition.continuous = true;
+    recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = navigator.language || 'en-US';
 
@@ -1919,11 +1923,17 @@
 
     recognition.onstart = () => {
       micBtn.classList.add('listening');
-      playListeningChime();
+      if (!isAutoRestart) playListeningChime();
+      isAutoRestart = false;
     };
 
     recognition.onend = () => {
       if (isRecognitionActive) {
+        if (liveInterim) {
+          committedTranscript += liveInterim + ' ';
+          liveInterim = '';
+        }
+        isAutoRestart = true;
         try { recognition.start(); } catch (e) {
           micBtn.classList.remove('listening');
         }
