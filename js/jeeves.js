@@ -164,7 +164,7 @@
 
   let pendingAttachments = [];
 
-  const JEEVES_BUILD = 'voice-fix-2026-09-25e'; 
+  const JEEVES_BUILD = 'voice-fix-2026-09-25f'; 
 
 
   function applyTheme(themeName) {
@@ -359,8 +359,18 @@
   }
   let isAutoSpeakEnabled = false;
 
+  const TYPED_HINT = 'Enter to send · Shift+Enter for a new line';
+  const VOICE_HINT = 'Say &ldquo;if you please, Jeeves&rdquo; or &ldquo;over to you, Jeeves&rdquo; when you\u2019re finished';
+
+  function updateComposerHint() {
+    const hintEl = document.getElementById('composer-hint');
+    if (!hintEl) return;
+    hintEl.innerHTML = isAutoSpeakEnabled ? VOICE_HINT : TYPED_HINT;
+  }
+
   function toggleAutoSpeak(forcedState, shouldReadLatest = false) {
     isAutoSpeakEnabled = (typeof forcedState === 'boolean') ? forcedState : !isAutoSpeakEnabled;
+    updateComposerHint();
 
     if (muteBtn) {
       muteBtn.classList.toggle('active', isAutoSpeakEnabled);
@@ -1119,7 +1129,7 @@
   // ---------- Persona ----------
     function buildSystemInstruction(){
     const h = (state.honorific || 'Sir').trim() || 'Sir';
-    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Always use Google Search to ground factual claims in authoritative sources. Every factual claim in your response MUST be followed immediately by an inline numeric citation marker in bare brackets (e.g. 'Northern flying squirrels are strictly nocturnal [1, 2].'). At the end of every response containing factual claims, provide a '### References' section formatted as a numbered list matching the inline markers (e.g. According to [Source Name], [brief domain credibility note], [key finding as link text](URL)). Never list a reference at the bottom that is not cited inline in the body text, and never place raw URLs in inline prose. Whenever you quote from great literature or notable historical figures, wrap the quotation itself (without your own quotation marks) together with its author in this exact format: [&ldquo;the exact quoted text&rdquo;](https://www.google.com/search?q=%22the%20exact%20quoted%20text%22%20Author%20Name%20quote) &mdash; *Author Name*.
+    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Always use Google Search to ground factual claims in authoritative sources. Every factual claim in your response MUST be followed immediately by an inline numeric citation marker in bare brackets (e.g. 'Northern flying squirrels are strictly nocturnal [1, 2].'). At the end of every response containing factual claims, provide a '### References' section formatted as a numbered list matching the inline markers (e.g. According to [Source Name], [brief domain credibility note], [key finding as link text](URL)). Never list a reference at the bottom that is not cited inline in the body text, and never place raw URLs in inline prose. Whenever you quote from great literature, historical figures, or book characters, incorporate the author's name (and the character's name if applicable) into the prose leading up to the quote, and format only the quote itself as a Google search link wrapped in double quotation marks (e.g. In the words of J.R.R. Tolkien's character, Sam Gamgee, ["There's some good in this world, Mr. Frodo, and it's worth fighting for."](https://www.google.com/search?q=%22There%27s%20some%20good%20in%20this%20world%22%20Tolkien%20quote)). Do not append an em-dash or author attribution after the quote.
 
         - Mobile Action Links: When scheduling, navigating, or composing drafts, proactively provide markdown links with actionable intents (e.g. [Add to Calendar](https://calendar.google.com/calendar/render?action=TEMPLATE&text=...), [Directions](https://www.google.com/maps/dir/?api=1&destination=...), [Send Email](mailto:...?subject=...&body=...), [Send SMS](sms:?body=...)).`;
     if (state.convoType === 'coding') {
@@ -2235,6 +2245,7 @@
 
   // ---------- Init ----------
   replayHistory();
+  updateComposerHint();
   addSystemNote('Build: ' + JEEVES_BUILD);
   if (sessionStorage.getItem('jeeves_just_updated')) {
     sessionStorage.removeItem('jeeves_just_updated');
