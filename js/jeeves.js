@@ -164,7 +164,7 @@
 
   let pendingAttachments = [];
 
-  const JEEVES_BUILD = 'voice-fix-2026-09-25d'; 
+  const JEEVES_BUILD = 'voice-fix-2026-09-25e'; 
 
 
   function applyTheme(themeName) {
