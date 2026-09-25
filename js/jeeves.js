@@ -164,7 +164,7 @@
 
   let pendingAttachments = [];
 
-  const JEEVES_BUILD = 'voice-fix-2026-09-25c'; 
+  const JEEVES_BUILD = 'voice-fix-2026-09-25d'; 
 
 
   function applyTheme(themeName) {
@@ -1871,15 +1871,15 @@
     }
   }
 
-  // ---------- Speech Recognition ----------
+    // ---------- Speech Recognition ----------
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   let recognition = null;
   let isRecognitionActive = false;
+  let isAutoRestart = false;
 
   let baseText = '';
   let committedTranscript = '';
-
-  let isAutoRestart = false;
+  let liveInterim = '';
 
   function startListening() {
     if (!recognition) return;
@@ -1899,6 +1899,7 @@
     isRecognitionActive = false;
     baseText = '';
     committedTranscript = '';
+    liveInterim = '';
     if (recognition) {
       try { recognition.stop(); } catch (e) {}
     }
@@ -1944,21 +1945,19 @@
 
     const TRIGGER_REGEX = /\b(?:what do you think|your thoughts|over to you|take it away|if you please|thank you),?\s*(?:jeeves|chief|geeves|jeevs|jeans|teams)[\s.,!?]*$/i;
 
-
     recognition.onresult = (event) => {
-      let interimTranscript = '';
+      liveInterim = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
           committedTranscript += transcript + ' ';
         } else {
-          interimTranscript += transcript;
+          liveInterim = transcript;
         }
       }
-      let combined = (baseText + committedTranscript + ' ' + interimTranscript).replace(/\s+/g, ' ');
+      let combined = (baseText + committedTranscript + ' ' + liveInterim).replace(/\s+/g, ' ');
 
       if (TRIGGER_REGEX.test(combined)) {
-        // Strip the trigger phrase so the prompt remains neat and clean
         combined = combined.replace(TRIGGER_REGEX, '').trim();
         inputEl.value = combined;
         autoResizeInput();
