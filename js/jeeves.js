@@ -1649,7 +1649,7 @@
     });
 
     const systemInstruction = buildSystemInstruction();
-    const fullSystemInstruction = `Current date and time: ${now}. ${systemInstruction}`;
+    const fullSystemInstruction = `Current date and time: ${now}. This is already correct and already reflects your local time zone — never use Google Search to look up or double-check the date or time, and never substitute UTC or any other time zone for it. ${systemInstruction}`;
 
       if (!systemInstruction) throw new Error("System instruction is empty.");
       
