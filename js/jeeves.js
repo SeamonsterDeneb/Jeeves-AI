@@ -1877,11 +1877,13 @@
   let isRecognitionActive = false;
 
   let baseText = '';
+  let committedTranscript = '';
 
   function startListening() {
     if (!recognition) return;
     try {
       baseText = inputEl.value ? (inputEl.value.trim() + ' ') : '';
+      committedTranscript = '';
       isRecognitionActive = true;
       recognition.start();
     } catch (e) {
@@ -1892,6 +1894,7 @@
   function stopListening() {
     isRecognitionActive = false;
     baseText = '';
+    committedTranscript = '';
     if (recognition) {
       try { recognition.stop(); } catch (e) {}
     }
@@ -1903,8 +1906,6 @@
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = navigator.language || 'en-US';
-
-    let baseText = '';
 
     micBtn.addEventListener('click', () => {
       if (micBtn.classList.contains('listening')) {
@@ -1935,11 +1936,16 @@
 
 
     recognition.onresult = (event) => {
-      let currentTranscript = '';
-      for (let i = 0; i < event.results.length; i++) {
-        currentTranscript += event.results[i][0].transcript;
+      let interimTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          committedTranscript += transcript + ' ';
+        } else {
+          interimTranscript += transcript;
+        }
       }
-      let combined = (baseText + ' ' + currentTranscript).replace(/\s+/g, ' ');
+      let combined = (baseText + committedTranscript + ' ' + interimTranscript).replace(/\s+/g, ' ');
 
       if (TRIGGER_REGEX.test(combined)) {
         // Strip the trigger phrase so the prompt remains neat and clean
