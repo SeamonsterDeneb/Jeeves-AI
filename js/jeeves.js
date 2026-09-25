@@ -138,11 +138,27 @@
       });
 
       if (cloudConvos.length > 0) {
-        state.conversations = cloudConvos;
+        const convoMap = new Map();
+        (state.conversations || []).forEach(c => convoMap.set(c.id, c));
+        cloudConvos.forEach(c => {
+          const local = convoMap.get(c.id);
+          if (!local || (c.updatedAt || 0) >= (local.updatedAt || 0)) {
+            convoMap.set(c.id, c);
+          }
+        });
+        state.conversations = Array.from(convoMap.values());
         try { localStorage.setItem(LS_KEY_CONVERSATIONS, JSON.stringify(state.conversations)); } catch(e){}
+
+        const active = state.conversations.find(c => c.id === state.activeId);
+        if (active && active.history) {
+          state.history = active.history;
+        }
+        if (archiveOverlay && archiveOverlay.classList.contains('open')) {
+          renderArchives();
+        }
       }
     } catch (err) {
-      console.warn(`Cloud fetch difficulty, {state.honorific}:`, err);
+      console.warn(`Cloud fetch difficulty, ${state.honorific}:`, err);
     }
   }
 
@@ -246,11 +262,13 @@
 
     try {
       state.conversations = state.conversations.filter(c => c.history.length > 0 || c.id === 'default');
-      const unnamed = state.conversations.filter(c => c.title === 'New Conversation' && c.history.length > 0);
+      const unnamed = state.conversations.filter(c => (c.title === 'New Conversation' || !c.title) && c.history.length > 0);
       for (const convo of unnamed) {
         convo.title = await generateTitle(convo.history);
+        convo.updatedAt = Date.now();
+        syncConvoToCloud(convo);
       }
-      persistHistory();
+      try { localStorage.setItem(LS_KEY_CONVERSATIONS, JSON.stringify(state.conversations)); } catch(e){}
       renderArchives();
     } finally {
       if (btn) {
@@ -874,7 +892,22 @@
 
   }
   
-  function getJeevesVoice() {
+  function playListeningChime() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.25);
+    } catch(e) {}
+  }
     const voices = speechSynthesis.getVoices();
     // Prioritize high-quality Google neural voices often found in Chrome/Android
     const preferred = voices.find(v => v.name.includes('Google UK English Male')) ||
@@ -1446,6 +1479,24 @@
   }
 
   // ---------- Sending messages ----------
+  async function syncConvoToCloud(convo) {
+    if (!isAuthenticated || !window.db || !window.auth?.currentUser || !convo) return;
+    try {
+      await window.db
+        .collection('users')
+        .doc(window.auth.currentUser.uid)
+        .collection('conversations')
+        .doc(convo.id)
+        .set({
+          title: convo.title || 'Main Conversation',
+          history: convo.history || [],
+          updatedAt: convo.updatedAt || Date.now()
+        }, { merge: true });
+    } catch (e) {
+      console.error(`Cloud sync failed, ${state.honorific}:`, e);
+    }
+  }
+
   function persistHistory(){
     const idx = state.conversations.findIndex(c => c.id === state.activeId);
     if (idx !== -1) {
@@ -1457,27 +1508,12 @@
 
     if (isAuthenticated && window.db && window.auth?.currentUser) {
       clearTimeout(cloudSyncTimer);
-      cloudSyncTimer = setTimeout(async () => {
-        try {
-          const activeConvo = state.conversations.find(c => c.id === state.activeId);
-          if (!activeConvo) return;
-          const docRef = window.db
-            .collection('users')
-            .doc(window.auth.currentUser.uid)
-            .collection('conversations')
-            .doc(state.activeId);
-          await docRef.set({
-            title: activeConvo.title || 'Main Conversation',
-            history: state.history,
-            updatedAt: Date.now()
-          }, { merge: true });
-        } catch (e) {
-          console.error(`Cloud sync failed, ${state.honorific}:`, e);
-        }
+      cloudSyncTimer = setTimeout(() => {
+        const activeConvo = state.conversations.find(c => c.id === state.activeId);
+        if (activeConvo) syncConvoToCloud(activeConvo);
       }, 1500);
     }
   }
-
 
   function autoResizeInput(){
     if (!inputEl) return;
@@ -1878,6 +1914,7 @@
 
     recognition.onstart = () => {
       micBtn.classList.add('listening');
+      playListeningChime();
     };
 
     recognition.onend = () => {
@@ -1894,16 +1931,9 @@
 
 
     recognition.onresult = (event) => {
-      let interimTranscript = '';
-      let finalTranscript = '';
-
+      let currentTranscript = '';
       for (let i = 0; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript + ' ';
-        } else {
-          interimTranscript += transcript;
-        }
+        currentTranscript += event.results[i][0].transcript;
       }
 
       let combined = (baseText + finalTranscript + interimTranscript).replace(/\s+/g, ' ');
@@ -1931,11 +1961,14 @@
   const archiveContent = document.getElementById('archive-content');
   const closeArchivesBtn = document.getElementById('close-archives');
 
-  async function startNewChat(){
+    async function startNewChat(){
     if (state.history.length > 0 && state.activeId !== 'default') {
-      const title = await generateTitle(state.history);
       const convo = state.conversations.find(c => c.id === state.activeId);
-      if (convo) convo.title = title;
+      if (convo && convo.title === 'New Conversation') {
+        convo.title = await generateTitle(state.history);
+        convo.updatedAt = Date.now();
+        syncConvoToCloud(convo);
+      }
     }
     const id = Date.now().toString();
     state.conversations.push({ id, title: 'New Conversation', history: [], updatedAt: Date.now() });
@@ -1944,15 +1977,15 @@
     persistHistory();
     replayHistory();
     archiveOverlay?.classList.remove('open');
-
   }
-
 
   function renameConversation(id, newTitle){
     const convo = state.conversations.find(c => c.id === id);
     if (convo && newTitle.trim()) {
       convo.title = newTitle.trim();
+      convo.updatedAt = Date.now();
       try { localStorage.setItem(LS_KEY_CONVERSATIONS, JSON.stringify(state.conversations)); } catch(e){}
+      syncConvoToCloud(convo);
     }
   }
 
@@ -1986,8 +2019,13 @@
       row.querySelector('.delete-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         if (confirm('Are you sure you wish to discard this conversation?')) {
-          state.conversations = state.conversations.filter(convo => convo.id !== c.id);
-          if (state.activeId === c.id) startNewChat();
+          const targetId = c.id;
+          state.conversations = state.conversations.filter(convo => convo.id !== targetId);
+          try { localStorage.setItem(LS_KEY_CONVERSATIONS, JSON.stringify(state.conversations)); } catch(e){}
+          if (isAuthenticated && window.db && window.auth?.currentUser) {
+            window.db.collection('users').doc(window.auth.currentUser.uid).collection('conversations').doc(targetId).delete().catch(console.error);
+          }
+          if (state.activeId === targetId) startNewChat();
           else persistHistory();
           renderArchives();
         }
@@ -2044,14 +2082,13 @@
   });
 
   document.getElementById('new-chat-btn')?.addEventListener('click', startNewChat);
-  document.getElementById('archive-btn')?.addEventListener('click', async () => {
-    if (isAuthenticated && window.db && window.auth?.currentUser) {
-      archiveOverlay?.classList.add('open');
-      archiveContent.innerHTML = `<div style="padding:20px; text-align:center; color:var(--mist); font-family:var(--font-ui);">One moment while I sync the archives across devices, ${escapeHtml(state.honorific)}…</div>`;
-      await pullCloudArchives();
-    }
+  document.getElementById('archive-btn')?.addEventListener('click', () => {
     renderArchives();
+    if (isAuthenticated && window.db && window.auth?.currentUser) {
+      pullCloudArchives();
+    }
   });
+
 
   function closeArchives(){
     archiveOverlay?.classList.remove('open');
