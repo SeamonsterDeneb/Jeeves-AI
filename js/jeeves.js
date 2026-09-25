@@ -1939,8 +1939,10 @@
       for (let i = 0; i < event.results.length; i++) {
         currentTranscript += event.results[i][0].transcript;
       }
-
-      let combined = (baseText + currentTranscript).replace(/\s+/g, ' ');
+      let combined = (baseText + ' ' + currentTranscript).replace(/\s+/g, ' ');
+      inputEl.value = combined;
+      autoResizeInput();
+    };
       
       if (TRIGGER_REGEX.test(combined)) {
         // Strip the trigger phrase so the prompt remains neat and clean
