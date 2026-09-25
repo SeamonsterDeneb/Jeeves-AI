@@ -164,7 +164,7 @@
 
   let pendingAttachments = [];
 
-
+  const JEEVES_BUILD = 'voice-fix-2026-09-25a'; 
 
 
   function applyTheme(themeName) {
@@ -2223,6 +2223,7 @@
 
   // ---------- Init ----------
   replayHistory();
+  addSystemNote('Build: ' + JEEVES_BUILD);
   if (sessionStorage.getItem('jeeves_just_updated')) {
     sessionStorage.removeItem('jeeves_just_updated');
     addSystemNote('Application cache successfully purged and latest files loaded.');
