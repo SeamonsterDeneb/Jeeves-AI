@@ -908,6 +908,24 @@
       osc.stop(ctx.currentTime + 0.25);
     } catch(e) {}
   }
+    function playListeningChime() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.25);
+    } catch(e) {}
+  }
+
+  function getJeevesVoice() {
     const voices = speechSynthesis.getVoices();
     // Prioritize high-quality Google neural voices often found in Chrome/Android
     const preferred = voices.find(v => v.name.includes('Google UK English Male')) ||
@@ -1936,7 +1954,7 @@
         currentTranscript += event.results[i][0].transcript;
       }
 
-      let combined = (baseText + finalTranscript + interimTranscript).replace(/\s+/g, ' ');
+      let combined = (baseText + currentTranscript).replace(/\s+/g, ' ');
       
       if (TRIGGER_REGEX.test(combined)) {
         // Strip the trigger phrase so the prompt remains neat and clean
