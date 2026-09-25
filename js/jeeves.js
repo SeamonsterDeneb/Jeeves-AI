@@ -1649,7 +1649,10 @@
     });
 
     const systemInstruction = buildSystemInstruction();
-    const fullSystemInstruction = `Current date and time: ${now}. This is already correct and already reflects your local time zone — never use Google Search to look up or double-check the date or time, and never substitute UTC or any other time zone for it. ${systemInstruction}`;
+    const voiceConvoAddendum = isAutoSpeakEnabled
+      ? ` You are currently in a spoken, hands-free conversation — the person is likely driving or otherwise occupied and cannot type or read. Keep this in mind: favor shorter, more conversational sentences over dense written prose, and never ask them to "see below," "click a link," or "read the references," since they cannot look at the screen right now. End your response with one brief, natural, inviting follow-up question so the conversation can continue turn by turn without them needing to touch the screen — the same instinct you already apply when offering to read out the references. Keep this question genuinely relevant to what was just discussed, not generic or tacked on, and ask only one.`
+      : '';
+    const fullSystemInstruction = `Current date and time: ${now}. ${systemInstruction}${voiceConvoAddendum}; The date and time are already correct and already reflects your local time zone — never use Google Search to look up or double-check the date or time, and never substitute UTC or any other time zone for it. ${systemInstruction}`;
 
       if (!systemInstruction) throw new Error("System instruction is empty.");
       
