@@ -624,34 +624,83 @@ header.letterhead{
   .empty-state button:hover{ background:rgba(184,146,90,0.12); }
 
   /* Conversation archive & Library tabs */
+  .archive-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    max-width:860px;
+    width:100%;
+    margin:0 auto 10px;
+  }
+  .archive-header h2{
+    margin:0;
+    font-family:var(--font-display);
+    font-weight:600;
+    font-size:24px;
+    color:var(--parchment);
+  }
   .archive-tab-nav {
     display: flex;
-    gap: 8px;
+    gap: 4px;
     max-width: 860px;
     width: 100%;
-    margin: 0 auto 14px;
+    margin: 0 auto;
+    padding-left: 8px;
+    border-bottom: 2px solid var(--hairline);
   }
   .archive-tab-btn {
-    flex: 1;
-    padding: 9px 14px;
-    font-size: 13px;
+    padding: 8px 18px;
+    font-size: 13.5px;
+    font-family: var(--font-ui);
     font-weight: 600;
     letter-spacing: 0.3px;
-    border-radius: 8px;
-    background: var(--ink-panel-2);
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    background: var(--ink-panel);
     border: 1px solid var(--hairline);
+    border-bottom: none;
     color: var(--mist);
     cursor: pointer;
+    position: relative;
+    top: 2px;
     transition: all 0.18s ease;
   }
   .archive-tab-btn:hover {
     color: var(--parchment);
-    border-color: var(--brass);
+    background: var(--ink-panel-2);
   }
   .archive-tab-btn.active {
-    background: var(--brass);
-    border-color: var(--brass-bright);
-    color: var(--ink-deep);
+    background: var(--ink-panel-2);
+    border-color: var(--brass);
+    border-bottom: 2px solid var(--ink-panel-2);
+    color: var(--brass-bright);
+    z-index: 2;
+  }
+  [data-theme="light"] .archive-tab-btn.active {
+    background: var(--ink-panel-2);
+    border-bottom-color: var(--ink-panel-2);
+    color: var(--parchment);
+  }
+  .archive-panel-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 860px;
+    width: 100%;
+    margin: 12px auto 10px;
+  }
+  .archive-panel-toolbar input[type="text"] {
+    flex: 1;
+    background: var(--ink-panel-2);
+    border: 1px solid var(--hairline);
+    color: var(--parchment);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    padding: 7px 12px;
+    border-radius: 8px;
+    outline: none;
   }
 
   #archive-overlay{

@@ -2155,10 +2155,7 @@
         <button type="button" class="archive-tab-btn ${state.activeArchiveTab === 'library' ? 'active' : ''}" data-tab="library">Story Library</button>
       `;
 
-      const searchInput = document.getElementById('search-archives');
-      if (searchInput && searchInput.parentElement) {
-        searchInput.parentElement.insertBefore(tabNav, searchInput);
-      } else if (archiveContent && archiveContent.parentElement) {
+      if (archiveContent && archiveContent.parentElement) {
         archiveContent.parentElement.insertBefore(tabNav, archiveContent);
       }
 
@@ -2168,8 +2165,6 @@
           tabNav.querySelectorAll('.archive-tab-btn').forEach(b => {
             b.classList.toggle('active', b.dataset.tab === state.activeArchiveTab);
           });
-          const searchBox = document.getElementById('search-archives');
-          if (searchBox) searchBox.value = '';
           state.activeArchiveTab === 'library' ? renderLibrary() : renderArchives();
         });
       });
@@ -2179,7 +2174,6 @@
       });
     }
   }
-
 
   async function preloadStoryText(story) {
     if (state.storyTextCache.has(story.id)) return state.storyTextCache.get(story.id);
@@ -2200,6 +2194,17 @@
     ensureArchiveTabs();
     if (!archiveContent) return;
     archiveContent.innerHTML = '';
+
+    // Dedicated search bar for Story Library
+    const toolbar = document.createElement('div');
+    toolbar.className = 'archive-panel-toolbar';
+    toolbar.innerHTML = `<input type="text" id="search-library" placeholder="Search stories and passages…" aria-label="Search stories">`;
+    archiveContent.appendChild(toolbar);
+
+    const listContainer = document.createElement('div');
+    listContainer.className = 'archive-list';
+    listContainer.id = 'library-story-list';
+    archiveContent.appendChild(listContainer);
 
     state.storyCatalogue.forEach(story => {
       preloadStoryText(story);
@@ -2232,17 +2237,33 @@
             return;
           }
           JeevesReader.load(text, story.id);
-          closeArchives();
-          JeevesReader.play();
+          renderLibrary();
+          JeevesReader.play().then(() => {
+            renderLibrary();
+          });
         }
       });
 
-      archiveContent.appendChild(row);
+      listContainer.appendChild(row);
+    });
+
+    toolbar.querySelector('#search-library')?.addEventListener('input', async (e) => {
+      const term = e.target.value.toLowerCase();
+      const rows = Array.from(listContainer.querySelectorAll('.story-row'));
+      if (!term) {
+        rows.forEach(r => { r.style.display = 'flex'; });
+        return;
+      }
+      for (const row of rows) {
+        const story = state.storyCatalogue.find(s => s.id === row.dataset.id);
+        const text = await preloadStoryText(story);
+        const match = (story?.title || '').toLowerCase().includes(term) || (text || '').toLowerCase().includes(term);
+        row.style.display = match ? 'flex' : 'none';
+      }
     });
 
     archiveOverlay.classList.add('open');
   }
-
 
     async function startNewChat(){
     if (state.history.length > 0 && state.activeId !== 'default') {
@@ -2286,6 +2307,24 @@
     ensureArchiveTabs();
     archiveContent.innerHTML = '';
 
+    // Dedicated toolbar for Conversations
+    const toolbar = document.createElement('div');
+    toolbar.className = 'archive-panel-toolbar';
+    toolbar.innerHTML = `
+      <input type="text" id="search-archives" placeholder="Search conversations…" aria-label="Search conversations">
+      <button id="refine-titles-btn" class="archive-btn" type="button" title="Tidy up conversation titles" style="padding:7px 12px;">🪄</button>
+      <button id="archive-new-chat-btn" class="archive-btn" type="button" title="Start new conversation" style="padding:7px 12px;">＋</button>
+    `;
+    archiveContent.appendChild(toolbar);
+
+    toolbar.querySelector('#refine-titles-btn')?.addEventListener('click', refineAllTitles);
+    toolbar.querySelector('#archive-new-chat-btn')?.addEventListener('click', startNewChat);
+
+    const listContainer = document.createElement('div');
+    listContainer.className = 'archive-list';
+    listContainer.id = 'archive-convo-list';
+    archiveContent.appendChild(listContainer);
+
     [...state.conversations].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).forEach(c => {
       const row = document.createElement('div');
       row.className = 'archive-row';
@@ -2316,55 +2355,52 @@
         }
       });
       row.querySelector('.open-btn').addEventListener('click', () => switchToConversation(c.id));
-      archiveContent.appendChild(row);
+      listContainer.appendChild(row);
     });
-    archiveOverlay.classList.add('open');
-    const searchInput = document.getElementById('search-archives');
-    if (searchInput) {
-      searchInput.value = '';
-      searchInput.focus();
-    }
-  }
 
-  document.getElementById('search-archives')?.addEventListener('input', (e) => {
-    const term = e.target.value.toLowerCase();
-    const rows = Array.from(document.querySelectorAll('.archive-row'));
-    if (!term) {
-      rows.forEach(r => { r.style.display = 'flex'; r.querySelector('.archive-timestamp').style.display = 'block'; });
-      return;
-    }
-    const results = rows.map(row => {
-      const convo = state.conversations.find(c => c.id === row.dataset.id);
-      let plainText = "";
-      convo.history.forEach(turn => turn.parts.forEach(p => { 
-        if(p.text && !p.text.includes('Current date and time:') && !p.text.includes('You are Reginald Jeeves')) {
-          plainText += p.text.replace(/```[\s\S]*?```/g, ' ') + " "; 
-        }
-      }));
+    toolbar.querySelector('#search-archives')?.addEventListener('input', (e) => {
+      const term = e.target.value.toLowerCase();
+      const rows = Array.from(listContainer.querySelectorAll('.archive-row'));
+      if (!term) {
+        rows.forEach(r => { r.style.display = 'flex'; r.querySelector('.archive-timestamp').style.display = 'block'; });
+        return;
+      }
+      const results = rows.map(row => {
+        const convo = state.conversations.find(c => c.id === row.dataset.id);
+        let plainText = "";
+        convo.history.forEach(turn => turn.parts.forEach(p => { 
+          if(p.text && !p.text.includes('Current date and time:') && !p.text.includes('You are Reginald Jeeves')) {
+            plainText += p.text.replace(/```[\s\S]*?```/g, ' ') + " "; 
+          }
+        }));
 
-      const matches = [...plainText.toLowerCase().matchAll(new RegExp(term, 'g'))];
-      return { row, plainText, count: matches.length, convo };
-    }).filter(r => r.count > 0);
+        const matches = [...plainText.toLowerCase().matchAll(new RegExp(term, 'g'))];
+        return { row, plainText, count: matches.length, convo };
+      }).filter(r => r.count > 0);
 
-    results.sort((a, b) => b.count - a.count || b.convo.updatedAt - a.convo.updatedAt);
-    
-    results.forEach(({row, plainText, count}, i) => {
-      row.style.order = i;
-      row.style.display = 'flex';
-      const ts = row.querySelector('.archive-timestamp');
-      const words = plainText.split(/\s+/);
-      const snippets = [];
-      words.forEach((w, idx) => {
-        if (w.toLowerCase().includes(term) && snippets.length < 3) {
-          const start = Math.max(0, idx - 5);
-          const end = Math.min(words.length, idx + 6);
-          snippets.push('...' + words.slice(start, end).join(' ').replace(new RegExp(term, 'gi'), (m) => `<strong>${m}</strong>`) + '...');
-        }
+      results.sort((a, b) => b.count - a.count || b.convo.updatedAt - a.convo.updatedAt);
+      
+      results.forEach(({row, plainText}, i) => {
+        row.style.order = i;
+        row.style.display = 'flex';
+        const ts = row.querySelector('.archive-timestamp');
+        const words = plainText.split(/\s+/);
+        const snippets = [];
+        words.forEach((w, idx) => {
+          if (w.toLowerCase().includes(term) && snippets.length < 3) {
+            const start = Math.max(0, idx - 5);
+            const end = Math.min(words.length, idx + 6);
+            snippets.push('...' + words.slice(start, end).join(' ').replace(new RegExp(term, 'gi'), (m) => `<strong>${m}</strong>`) + '...');
+          }
+        });
+        ts.innerHTML = snippets.join('<br>');
       });
-      ts.innerHTML = snippets.join('<br>');
+      rows.filter(r => !results.find(res => res.row === r)).forEach(r => r.style.display = 'none');
     });
-    rows.filter(r => !results.find(res => res.row === r)).forEach(r => r.style.display = 'none');
-  });
+
+    archiveOverlay.classList.add('open');
+    toolbar.querySelector('#search-archives')?.focus();
+  }
 
   document.getElementById('new-chat-btn')?.addEventListener('click', startNewChat);
   document.getElementById('archive-btn')?.addEventListener('click', () => {
