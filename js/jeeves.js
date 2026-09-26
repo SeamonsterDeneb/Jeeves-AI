@@ -2148,13 +2148,11 @@
     if (!tabNav && archiveOverlay) {
       tabNav = document.createElement('div');
       tabNav.id = 'archive-tab-nav';
-      tabNav.style.display = 'flex';
-      tabNav.style.gap = '8px';
-      tabNav.style.margin = '0 0 14px 0';
+      tabNav.className = 'archive-tab-nav';
 
       tabNav.innerHTML = `
-        <button type="button" class="copy-btn archive-tab-btn" data-tab="archives" style="flex:1; padding:8px; font-weight:600;">Conversations</button>
-        <button type="button" class="copy-btn archive-tab-btn" data-tab="library" style="flex:1; padding:8px; font-weight:600; opacity:0.6;">Story Library</button>
+        <button type="button" class="archive-tab-btn ${state.activeArchiveTab === 'archives' ? 'active' : ''}" data-tab="archives">Conversations</button>
+        <button type="button" class="archive-tab-btn ${state.activeArchiveTab === 'library' ? 'active' : ''}" data-tab="library">Story Library</button>
       `;
 
       const searchInput = document.getElementById('search-archives');
@@ -2168,15 +2166,20 @@
         btn.addEventListener('click', (e) => {
           state.activeArchiveTab = e.currentTarget.dataset.tab;
           tabNav.querySelectorAll('.archive-tab-btn').forEach(b => {
-            b.style.opacity = b.dataset.tab === state.activeArchiveTab ? '1' : '0.6';
+            b.classList.toggle('active', b.dataset.tab === state.activeArchiveTab);
           });
           const searchBox = document.getElementById('search-archives');
           if (searchBox) searchBox.value = '';
           state.activeArchiveTab === 'library' ? renderLibrary() : renderArchives();
         });
       });
+    } else if (tabNav) {
+      tabNav.querySelectorAll('.archive-tab-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.tab === state.activeArchiveTab);
+      });
     }
   }
+
 
   async function preloadStoryText(story) {
     if (state.storyTextCache.has(story.id)) return state.storyTextCache.get(story.id);
