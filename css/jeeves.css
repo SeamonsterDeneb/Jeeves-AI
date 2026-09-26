@@ -746,7 +746,79 @@ header.letterhead{
     border-radius:10px;
     padding:8px 10px;
   }
-  .archive-title-wrap{
+  #close-archives {
+    font-size: 30px !important;
+    width: 40px !important;
+    height: 40px !important;
+    line-height: 1;
+    color: var(--parchment-dim);
+  }
+  #close-archives:hover {
+    color: var(--parchment);
+  }
+  #refine-titles-btn {
+    background: #ffffff !important;
+    border: 1.5px solid var(--brass) !important;
+    padding: 6px 10px !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 38px;
+  }
+  #refine-titles-btn svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+  .story-book-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 16px;
+    padding: 8px 0;
+  }
+  .story-book-card {
+    aspect-ratio: 2 / 3;
+    background: linear-gradient(145deg, #3a2216 0%, #20120a 100%);
+    border: 1px solid rgba(212, 175, 55, 0.45);
+    border-radius: 6px;
+    padding: 14px 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    box-shadow: 0 6px 14px rgba(0,0,0,0.5);
+    cursor: pointer;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+    text-align: center;
+  }
+  .story-book-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--brass-bright);
+  }
+  .story-book-title {
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 700;
+    font-style: italic;
+    color: var(--parchment);
+    line-height: 1.35;
+    margin-top: 4px;
+    letter-spacing: 0.3px;
+  }
+  .story-book-meta {
+    font-size: 11.5px;
+    color: var(--parchment-dim);
+    margin-bottom: 8px;
+  }
+  .story-book-card .read-story-btn {
+    background: #ffffff !important;
+    color: #1a261f !important;
+    border: 1px solid rgba(0,0,0,0.15) !important;
+    font-weight: 700;
+  }
+  .story-book-card .read-story-btn:hover {
+    background: #f7f3eb !important;
+  }
+
+  .archive-title-wrap {
     flex:1;
     display:flex;
     flex-direction:column;

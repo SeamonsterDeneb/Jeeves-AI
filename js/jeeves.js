@@ -2190,42 +2190,45 @@
     return '';
   }
 
-  function renderLibrary() {
+    function renderLibrary() {
     ensureArchiveTabs();
     if (!archiveContent) return;
     archiveContent.innerHTML = '';
 
-    // Dedicated search bar for Story Library
-    const toolbar = document.createElement('div');
-    toolbar.className = 'archive-panel-toolbar';
-    toolbar.innerHTML = `<input type="text" id="search-library" placeholder="Search stories and passages…" aria-label="Search stories">`;
-    archiveContent.appendChild(toolbar);
-
-    const listContainer = document.createElement('div');
-    listContainer.className = 'archive-list';
-    listContainer.id = 'library-story-list';
-    archiveContent.appendChild(listContainer);
+    const grid = document.createElement('div');
+    grid.className = 'story-book-grid';
 
     state.storyCatalogue.forEach(story => {
       preloadStoryText(story);
-      const row = document.createElement('div');
-      row.className = 'archive-row story-row';
-      row.dataset.id = story.id;
-      const progress = state.readerProgress[story.id] || 0;
+      const card = document.createElement('div');
+      card.className = 'story-book-card';
+      card.dataset.id = story.id;
+
+      const progressIdx = state.readerProgress[story.id] || 0;
+      let pct = 0;
+      if (state.storyTextCache.has(story.id)) {
+        const lines = state.storyTextCache.get(story.id).split(/\r?\n/).filter(l => l.trim().length > 0);
+        if (lines.length > 0) {
+          pct = Math.min(100, Math.round((progressIdx / lines.length) * 100));
+        }
+      }
+
+      const bookmarkText = progressIdx > 0 ? `Bookmark: ${pct}%` : 'Unread';
       const isCurrent = JeevesReader.storyId === story.id && JeevesReader.isPlaying;
 
-      row.innerHTML = `
-        <div class="archive-title-wrap">
-          <div style="font-family:var(--font-display); font-size:16px; color:var(--parchment);">${escapeHtml(story.title)}</div>
-          <div class="archive-timestamp" style="color:var(--mist); font-size:12px;">Position: Sentence ${progress + 1}</div>
+      card.innerHTML = `
+        <div class="story-book-title">${escapeHtml(story.title)}</div>
+        <div>
+          <div class="story-book-meta">${bookmarkText}</div>
+          <button class="archive-btn open-btn read-story-btn" type="button" style="width:100%; font-size:12px; padding:4px 6px;">
+            ${isCurrent ? '⏸ Pause' : (progressIdx > 0 ? '▶ Resume' : '▶ Read')}
+          </button>
         </div>
-        <button tabindex="0" class="archive-btn open-btn read-story-btn" type="button" style="margin-left:auto;">
-          ${isCurrent ? '⏸ Pause' : (progress > 0 ? '▶ Resume' : '▶ Read')}
-        </button>
       `;
 
-      const playBtn = row.querySelector('.read-story-btn');
-      playBtn.addEventListener('click', async () => {
+      const playBtn = card.querySelector('.read-story-btn');
+      playBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
         unlockAudio();
         if (JeevesReader.storyId === story.id && JeevesReader.isPlaying) {
           JeevesReader.pause();
@@ -2233,7 +2236,7 @@
         } else {
           const text = await preloadStoryText(story);
           if (!text) {
-            alert(`Unable to load "${story.title}" from ${story.file}`);
+            alert(`Unable to load "${story.title}"`);
             return;
           }
           JeevesReader.load(text, story.id);
@@ -2244,24 +2247,14 @@
         }
       });
 
-      listContainer.appendChild(row);
+      card.addEventListener('click', () => {
+        playBtn.click();
+      });
+
+      grid.appendChild(card);
     });
 
-    toolbar.querySelector('#search-library')?.addEventListener('input', async (e) => {
-      const term = e.target.value.toLowerCase();
-      const rows = Array.from(listContainer.querySelectorAll('.story-row'));
-      if (!term) {
-        rows.forEach(r => { r.style.display = 'flex'; });
-        return;
-      }
-      for (const row of rows) {
-        const story = state.storyCatalogue.find(s => s.id === row.dataset.id);
-        const text = await preloadStoryText(story);
-        const match = (story?.title || '').toLowerCase().includes(term) || (text || '').toLowerCase().includes(term);
-        row.style.display = match ? 'flex' : 'none';
-      }
-    });
-
+    archiveContent.appendChild(grid);
     archiveOverlay.classList.add('open');
   }
 
@@ -2312,7 +2305,18 @@
     toolbar.className = 'archive-panel-toolbar';
     toolbar.innerHTML = `
       <input type="text" id="search-archives" placeholder="Search conversations…" aria-label="Search conversations">
-      <button id="refine-titles-btn" class="archive-btn" type="button" title="Tidy up conversation titles" style="padding:7px 12px;">🪄</button>
+      <button id="refine-titles-btn" class="archive-btn" type="button" title="Tidy up conversation titles" style="padding:7px 12px;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="18" height="18">
+          <!-- Dustpan -->
+          <path d="M47,49 C47,44.6 44.4,41 41.2,41 L38.8,41 C35.6,41 33,44.6 33,49 L33,56 L25,56 C23.3,56 22,57.3 22,59 L22,76 C22,77.7 23.3,79 25,79 L53,79 C54.7,79 56,77.7 56,76 L56,59 C56,57.3 54.7,56 53,56 L47,56 Z M37,20 C37,17.8 38.3,16 40,16 C41.7,16 43,17.8 43,20 L43,41 L37,41 Z M41,25 C41,24.4 39.5,24 39,24 C38.5,24 39,24.4 39,25 L39,29 C39,29.6 39.5,30 40,30 C40.5,30 41,29.6 41,29 Z" fill="#8c642d"/>
+          <path d="M25,72 L53,72 L51,62 L27,62 Z" fill="#ffffff"/>
+          <!-- Broom -->
+          <rect x="67" y="14" width="4" height="35" rx="2" fill="#8c642d"/>
+          <path d="M69,45 C65.5,45 61,48.5 61,52 L77,52 C77,48.5 72.5,45 69,45 Z" fill="#8c642d"/>
+          <path d="M60,54 L78,54 C78.5,54 79,54.5 79,55 L79,59 C79,59.5 78.5,60 78,60 L60,60 C59.5,60 59,59.5 59,59 L59,55 C59,54.5 59.5,54 60,54 Z" fill="#8c642d"/>
+          <path d="M59,62 L51,79 C51,79 53,79 55,79 L60,67 L63,79 L66,67 L69,79 L72,67 L75,79 L77,79 L79,62 Z" fill="#8c642d"/>
+        </svg>
+      </button>
       <button id="archive-new-chat-btn" class="archive-btn" type="button" title="Start new conversation" style="padding:7px 12px;">＋</button>
     `;
     archiveContent.appendChild(toolbar);
