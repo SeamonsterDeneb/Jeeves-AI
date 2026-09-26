@@ -164,7 +164,7 @@
 
   let pendingAttachments = [];
 
-  const JEEVES_BUILD = 'voice-fix-2026-09-25g'; 
+  const JEEVES_BUILD = 'voice-fix-2026-09-26b'; 
 
 
   function applyTheme(themeName) {
@@ -935,9 +935,18 @@
     if (!text) return '';
     let speech = text;
     // Transform quotation mark entities and characters into spoken quote markers
-    speech = speech.replace(/&ldquo;|&#8220;|“/gi, ' quote, ').replace(/&rdquo;|&#8221;|”/gi, ', endquote ');
-      speech = speech.replace(/"([^"\n]+)"/g, ' quote, $1, endquote ');
-      speech = speech.replace(/&[a-z0-9#]+;/gi, ' ');
+    // Handle initials (e.g., P.G. Wodehouse -> P G Wodehouse) to prevent terminal stops
+    speech = speech.replace(/\b([A-Z])\.(?=\s*[A-Z]\.|\s+[A-Z][a-z])/g, '$1 ');
+    speech = speech.replace(/\b([A-Z])\.(?=\s)/g, '$1');
+
+    // Replace quotation marks with soft pauses instead of literal spoken labels
+    speech = speech.replace(/&ldquo;|&#8220;|“/gi, ', ').replace(/&rdquo;|&#8221;|”/gi, ', ');
+    speech = speech.replace(/"([^"\n]+)"/g, ', $1, ');
+
+    // Clean up punctuation collisions and redundant pauses
+    speech = speech.replace(/\s*,\s*,+/g, ', ').replace(/,\s*([.?!])/g, '$1').replace(/\s{2,}/g, ' ');
+
+    speech = speech.replace(/&[a-z0-9#]+;/gi, ' ');
 
     // Read only link labels from markdown links [label](url)
     speech = speech.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
@@ -979,10 +988,19 @@
       .replace(/`+/g, '')
       .replace(/(\*\*|__|\*|_|#)/g, '');
 
-    cleanText = cleanText
-      .replace(/&ldquo;|&#8220;|“/gi, ' quote, ')
-      .replace(/&rdquo;|&#8221;|”/gi, ', end quote. ')
-      .replace(/"([^"\n]+)"/g, ' quote, $1, end quote. ');
+          // Handle initials (e.g. P.G. Wodehouse -> P G Wodehouse) to avert sentence-ending pauses
+      cleanText = cleanText.replace(/\b([A-Z])\.(?=\s*[A-Z]\.|\s+[A-Z][a-z])/g, '$1 ');
+      cleanText = cleanText.replace(/\b([A-Z])\.(?=\s)/g, '$1');
+
+      // Replace quotation marks with conversational pauses instead of verbalized words
+      cleanText = cleanText
+        .replace(/&ldquo;|&#8220;|“/gi, ', ')
+        .replace(/&rdquo;|&#8221;|”/gi, ', ')
+        .replace(/"([^"\n]+)"/g, ', $1, ');
+
+      // Normalize multiple commas and punctuation collisions
+      cleanText = cleanText.replace(/\s*,\s*,+/g, ', ').replace(/,\s*([.?!])/g, '$1').replace(/\s{2,}/g, ' ');
+
     cleanText = cleanText.replace(/&mdash;|—/g, '. ');
     cleanText = cleanText.replace(/&[a-z0-9#]+;/gi, ' ');
     // Action button links (Maps, Calendar, Email, SMS, Tel): speak only the button label

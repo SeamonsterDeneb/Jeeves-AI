@@ -59,7 +59,7 @@ exports.synthesizeSpeech = functions.https.onRequest(async (req, res) => {
   const request = {
     input: { text: formatTextForTTS(text) },
     voice: { languageCode: 'en-GB', name: 'en-GB-Standard-B' },
-    audioConfig: { audioEncoding: 'MP3', pitch: -3, speakingRate: 0.92},
+    audioConfig: { audioEncoding: 'MP3', pitch: -4, speakingRate: 0.92},
   };
 
   const [response] = await client.synthesizeSpeech(request);
