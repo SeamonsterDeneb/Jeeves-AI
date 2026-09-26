@@ -34,6 +34,8 @@
   const LS_KEY_MODEL_OVERRIDES = 'jeeves_model_overrides'; // { [convoType]: modelName }
 
 
+  const LS_KEY_VOICE_PROFILES = 'jeeves_voice_profiles';
+  const LS_KEY_READER_PROGRESS = 'jeeves_reader_progress';
   const LS_KEY_HISTORY = 'jeeves_history';
   const LS_KEY_BLACKLIST = 'jeeves_unavailable_models';
   const LS_KEY_PRICING = 'jeeves_pricing'; // { [modelName]: { inputPerM, outputPerM, free } }
@@ -65,6 +67,8 @@
     convoType: 'general',
 
 
+    voiceProfiles: JSON.parse(localStorage.getItem(LS_KEY_VOICE_PROFILES) || '{"Jeeves":{"pitch":0,"browserPitch":1.0},"Bertie":{"pitch":2.0,"browserPitch":1.1},"Aunt Agatha":{"pitch":5.0,"browserPitch":1.35},"Bingo":{"pitch":1.5,"browserPitch":1.15},"Aline":{"pitch":4.0,"browserPitch":1.25},"Sidney":{"pitch":-2.0,"browserPitch":0.85}}'),
+    readerProgress: JSON.parse(localStorage.getItem(LS_KEY_READER_PROGRESS) || '{}'),
     history: [],
     conversations: [],
     activeId: localStorage.getItem(LS_KEY_ACTIVE) || 'default',
@@ -74,6 +78,11 @@
     usageLog: JSON.parse(localStorage.getItem(LS_KEY_USAGE)) || [],
     ttsQuota: JSON.parse(localStorage.getItem(LS_KEY_TTS_QUOTA)) || { count: 0, month: '' },
     ttsRate: parseFloat(localStorage.getItem('jeeves_tts_rate')) || 1.0,
+    activeArchiveTab: 'archives',
+    storyCatalogue: [
+      { id: 'agatha-bloomer', title: 'Aunt Agatha Makes a Bloomer', file: 'stories/agatha-bloomer.lit' }
+    ],
+    storyTextCache: new Map(),
   };
 
     // Falls back to the default model whenever a mode has no override set.
@@ -1019,12 +1028,12 @@
     return cleanText;
   }
 
-  async function fetchTtsBlobUrl(cleanText) {
+  async function fetchTtsBlobUrl(cleanText, pitch = 0) {
     try {
       const resp = await fetch('https://us-central1-jeeves-login-6391e.cloudfunctions.net/synthesizeSpeech', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: cleanText, rate: state.ttsRate, speakingRate: state.ttsRate, userId: window.auth?.currentUser?.uid })
+        body: JSON.stringify({ text: cleanText, rate: state.ttsRate, speakingRate: state.ttsRate, pitch: pitch, userId: window.auth?.currentUser?.uid })
       });
       return resp.ok ? URL.createObjectURL(await resp.blob()) : null;
     } catch (e) { return null; }
@@ -1526,7 +1535,115 @@
     replayHistory();
   }
 
-  // ---------- Sending messages ----------
+  // ---------- Jeeves Reader Engine ----------
+  const JeevesReader = {
+    storyId: '',
+    lines: [],
+    currentIndex: 0,
+    isPlaying: false,
+
+    parseLine(raw) {
+      const match = raw.match(/^\s*\[([^\]]+)\]\s*(.*)$/);
+      if (match) {
+        return { speaker: match[1].trim(), text: match[2].trim() };
+      }
+      return { speaker: 'Jeeves', text: raw.trim() };
+    },
+
+    getProfile(speaker) {
+      if (!state.voiceProfiles[speaker]) {
+        state.voiceProfiles[speaker] = { pitch: 0, browserPitch: 1.0 };
+        try { localStorage.setItem(LS_KEY_VOICE_PROFILES, JSON.stringify(state.voiceProfiles)); } catch(e){}
+      }
+      return state.voiceProfiles[speaker];
+    },
+
+    load(rawText, storyId = 'default_story') {
+      this.storyId = storyId;
+      this.lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      this.currentIndex = state.readerProgress[this.storyId] || 0;
+      if (this.currentIndex >= this.lines.length) this.currentIndex = 0;
+    },
+
+    saveProgress() {
+      state.readerProgress[this.storyId] = this.currentIndex;
+      try { localStorage.setItem(LS_KEY_READER_PROGRESS, JSON.stringify(state.readerProgress)); } catch(e){}
+    },
+
+    async play() {
+      if (!this.lines.length || this.currentIndex >= this.lines.length) return;
+      this.isPlaying = true;
+
+      while (this.isPlaying && this.currentIndex < this.lines.length) {
+        const current = this.parseLine(this.lines[this.currentIndex]);
+        const profile = this.getProfile(current.speaker);
+        const clean = sanitizeForSpeech(current.text);
+
+        // Prefetch up to 3 sentences ahead
+        for (let offset = 1; offset <= 3; offset++) {
+          const aheadIdx = this.currentIndex + offset;
+          if (aheadIdx < this.lines.length) {
+            const ahead = this.parseLine(this.lines[aheadIdx]);
+            const aheadClean = sanitizeForSpeech(ahead.text);
+            const aheadProf = this.getProfile(ahead.speaker);
+            if (aheadClean && !audioPrefetchCache.has(aheadClean)) {
+              audioPrefetchCache.set(aheadClean, fetchTtsBlobUrl(aheadClean, aheadProf.pitch));
+            }
+          }
+        }
+
+        if (clean) {
+          let playedCloud = false;
+          if (getTtsQuota() < 980000) {
+            try {
+              const audioUrl = audioPrefetchCache.has(clean)
+                ? await audioPrefetchCache.get(clean)
+                : await fetchTtsBlobUrl(clean, profile.pitch);
+              audioPrefetchCache.delete(clean);
+              if (audioUrl) {
+                await new Promise(resolve => {
+                  ttsAudio.src = audioUrl;
+                  ttsAudio.playbackRate = state.ttsRate || 1.0;
+                  ttsAudio.onended = resolve;
+                  ttsAudio.onerror = resolve;
+                  ttsAudio.play().catch(resolve);
+                });
+                playedCloud = true;
+              }
+            } catch (err) {
+              console.warn('Reader cloud audio failed, falling back:', err);
+            }
+          }
+
+          if (!playedCloud && 'speechSynthesis' in window) {
+            await new Promise(resolve => {
+              const u = new SpeechSynthesisUtterance(clean);
+              const voice = getJeevesVoice();
+              if (voice) u.voice = voice;
+              u.rate = state.ttsRate || 1.0;
+              u.pitch = profile.browserPitch || 1.0;
+              u.onend = resolve;
+              u.onerror = resolve;
+              speechSynthesis.speak(u);
+            });
+          }
+        }
+
+        this.currentIndex++;
+        this.saveProgress();
+      }
+      this.isPlaying = false;
+    },
+
+    pause() {
+      this.isPlaying = false;
+      ttsAudio.pause();
+      if ('speechSynthesis' in window) speechSynthesis.cancel();
+      this.saveProgress();
+    }
+  };
+  window.JeevesReader = JeevesReader;
+
   async function syncConvoToCloud(convo) {
     if (!isAuthenticated || !window.db || !window.auth?.currentUser || !convo) return;
     try {
@@ -2021,10 +2138,108 @@
     micBtn.style.display = 'none';
   }
 
-  // ---------- Conversation switcher ----------
+  // ---------- Conversation switcher & Library ----------
   const archiveOverlay = document.getElementById('archive-overlay');
   const archiveContent = document.getElementById('archive-content');
   const closeArchivesBtn = document.getElementById('close-archives');
+
+  function ensureArchiveTabs() {
+    let tabNav = document.getElementById('archive-tab-nav');
+    if (!tabNav && archiveOverlay) {
+      tabNav = document.createElement('div');
+      tabNav.id = 'archive-tab-nav';
+      tabNav.style.display = 'flex';
+      tabNav.style.gap = '8px';
+      tabNav.style.margin = '0 0 14px 0';
+
+      tabNav.innerHTML = `
+        <button type="button" class="copy-btn archive-tab-btn" data-tab="archives" style="flex:1; padding:8px; font-weight:600;">Conversations</button>
+        <button type="button" class="copy-btn archive-tab-btn" data-tab="library" style="flex:1; padding:8px; font-weight:600; opacity:0.6;">Story Library</button>
+      `;
+
+      const searchInput = document.getElementById('search-archives');
+      if (searchInput && searchInput.parentElement) {
+        searchInput.parentElement.insertBefore(tabNav, searchInput);
+      } else if (archiveContent && archiveContent.parentElement) {
+        archiveContent.parentElement.insertBefore(tabNav, archiveContent);
+      }
+
+      tabNav.querySelectorAll('.archive-tab-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          state.activeArchiveTab = e.currentTarget.dataset.tab;
+          tabNav.querySelectorAll('.archive-tab-btn').forEach(b => {
+            b.style.opacity = b.dataset.tab === state.activeArchiveTab ? '1' : '0.6';
+          });
+          const searchBox = document.getElementById('search-archives');
+          if (searchBox) searchBox.value = '';
+          state.activeArchiveTab === 'library' ? renderLibrary() : renderArchives();
+        });
+      });
+    }
+  }
+
+  async function preloadStoryText(story) {
+    if (state.storyTextCache.has(story.id)) return state.storyTextCache.get(story.id);
+    try {
+      const res = await fetch(story.file);
+      if (res.ok) {
+        const text = await res.text();
+        state.storyTextCache.set(story.id, text);
+        return text;
+      }
+    } catch (e) {
+      console.warn('Could not cache story text:', e);
+    }
+    return '';
+  }
+
+  function renderLibrary() {
+    ensureArchiveTabs();
+    if (!archiveContent) return;
+    archiveContent.innerHTML = '';
+
+    state.storyCatalogue.forEach(story => {
+      preloadStoryText(story);
+      const row = document.createElement('div');
+      row.className = 'archive-row story-row';
+      row.dataset.id = story.id;
+      const progress = state.readerProgress[story.id] || 0;
+      const isCurrent = JeevesReader.storyId === story.id && JeevesReader.isPlaying;
+
+      row.innerHTML = `
+        <div class="archive-title-wrap">
+          <div style="font-family:var(--font-display); font-size:16px; color:var(--parchment);">${escapeHtml(story.title)}</div>
+          <div class="archive-timestamp" style="color:var(--mist); font-size:12px;">Position: Sentence ${progress + 1}</div>
+        </div>
+        <button tabindex="0" class="archive-btn open-btn read-story-btn" type="button" style="margin-left:auto;">
+          ${isCurrent ? '⏸ Pause' : (progress > 0 ? '▶ Resume' : '▶ Read')}
+        </button>
+      `;
+
+      const playBtn = row.querySelector('.read-story-btn');
+      playBtn.addEventListener('click', async () => {
+        unlockAudio();
+        if (JeevesReader.storyId === story.id && JeevesReader.isPlaying) {
+          JeevesReader.pause();
+          renderLibrary();
+        } else {
+          const text = await preloadStoryText(story);
+          if (!text) {
+            alert(`Unable to load "${story.title}" from ${story.file}`);
+            return;
+          }
+          JeevesReader.load(text, story.id);
+          closeArchives();
+          JeevesReader.play();
+        }
+      });
+
+      archiveContent.appendChild(row);
+    });
+
+    archiveOverlay.classList.add('open');
+  }
+
 
     async function startNewChat(){
     if (state.history.length > 0 && state.activeId !== 'default') {
@@ -2065,7 +2280,9 @@
   }
 
   function renderArchives(){
+    ensureArchiveTabs();
     archiveContent.innerHTML = '';
+
     [...state.conversations].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).forEach(c => {
       const row = document.createElement('div');
       row.className = 'archive-row';
@@ -2277,9 +2494,56 @@
   autoResizeInput();
 
 
+  function addReaderTestButton() {
+    const row = document.createElement('div');
+    row.className = 'msg-row system-note';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.style.display = 'flex';
+    bubble.style.gap = '8px';
+    bubble.style.alignItems = 'center';
+    bubble.style.justifyContent = 'center';
+
+    const playBtn = document.createElement('button');
+    playBtn.className = 'copy-btn';
+    playBtn.type = 'button';
+    playBtn.textContent = '▶ Read "Aunt Agatha Makes a Bloomer"';
+    playBtn.onclick = () => {
+      unlockAudio();
+      if (JeevesReader.isPlaying) {
+        JeevesReader.pause();
+        playBtn.textContent = '▶ Resume Reading';
+      } else {
+        playBtn.textContent = '⏸ Pause Reading';
+        fetch('stories/agatha-bloomer.lit')
+          .then(res => {
+            if (!res.ok) throw new Error('File not found at stories/agatha-bloomer.lit');
+            return res.text();
+          })
+          .then(text => {
+            JeevesReader.load(text, 'agatha-bloomer');
+            JeevesReader.play().then(() => {
+              playBtn.textContent = '▶ Read "Aunt Agatha Makes a Bloomer"';
+            });
+          })
+          .catch(err => {
+            console.error('Reader error:', err);
+            alert('Could not load story: ' + err.message);
+            playBtn.textContent = '▶ Read "Aunt Agatha Makes a Bloomer"';
+          });
+      }
+    };
+
+    bubble.appendChild(playBtn);
+    row.appendChild(bubble);
+    if (chatEl) chatEl.appendChild(row);
+    scrollToBottom();
+  }
+
   // ---------- Init ----------
   replayHistory();
   updateComposerHint();
+  addReaderTestButton();
   addSystemNote('Build: ' + JEEVES_BUILD);
   if (sessionStorage.getItem('jeeves_just_updated')) {
     sessionStorage.removeItem('jeeves_just_updated');
