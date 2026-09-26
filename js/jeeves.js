@@ -243,12 +243,12 @@
       style.textContent = `
         @keyframes tidyBorderGlow {
           0% { box-shadow: 0 0 0 1px var(--brass-bright, #d4af37); }
-          50% { box-shadow: 0 0 8px 2px var(--brass-bright, #d4af37); border-color: var(--brass-bright, #d4af37); }
+          50% { box-shadow: 0 0 10px 3px var(--brass-bright, #d4af37); border-color: var(--brass-bright, #d4af37) !important; }
           100% { box-shadow: 0 0 0 1px var(--brass-bright, #d4af37); }
         }
         .tidying-border {
-          animation: tidyBorderGlow 1.6s infinite ease-in-out !important;
-          opacity: 0.85;
+          animation: tidyBorderGlow 1.4s infinite ease-in-out !important;
+          opacity: 0.9;
         }
       `;
       document.head.appendChild(style);
@@ -2195,6 +2195,13 @@
     if (!archiveContent) return;
     archiveContent.innerHTML = '';
 
+    const toolbar = document.createElement('div');
+    toolbar.className = 'archive-panel-toolbar';
+    toolbar.innerHTML = `
+      <input type="text" id="search-stories" placeholder="Search stories…" aria-label="Search stories">
+    `;
+    archiveContent.appendChild(toolbar);
+
     const grid = document.createElement('div');
     grid.className = 'story-book-grid';
 
@@ -2213,15 +2220,16 @@
         }
       }
 
-      const bookmarkText = progressIdx > 0 ? `Bookmark: ${pct}%` : 'Unread';
+      const bookmarkText = progressIdx > 0 ? `Bookmark: ${pct}%` : 'Bookmark: 0%';
       const isCurrent = JeevesReader.storyId === story.id && JeevesReader.isPlaying;
+      const btnLabel = isCurrent ? '⏸ Pause' : (progressIdx > 0 ? '▶ Resume' : '▶ Play');
 
       card.innerHTML = `
         <div class="story-book-title">${escapeHtml(story.title)}</div>
         <div>
           <div class="story-book-meta">${bookmarkText}</div>
-          <button class="archive-btn open-btn read-story-btn" type="button" style="width:100%; font-size:12px; padding:4px 6px;">
-            ${isCurrent ? '⏸ Pause' : (progressIdx > 0 ? '▶ Resume' : '▶ Read')}
+          <button class="archive-btn open-btn read-story-btn" type="button" style="width:100%; font-size:12px; padding:6px 6px;">
+            ${btnLabel}
           </button>
         </div>
       `;
@@ -2255,8 +2263,21 @@
     });
 
     archiveContent.appendChild(grid);
+
+    toolbar.querySelector('#search-stories')?.addEventListener('input', async (e) => {
+      const term = e.target.value.toLowerCase();
+      const cards = Array.from(grid.querySelectorAll('.story-book-card'));
+      for (const cardEl of cards) {
+        const story = state.storyCatalogue.find(s => s.id === cardEl.dataset.id);
+        const text = await preloadStoryText(story);
+        const match = !term || (story?.title || '').toLowerCase().includes(term) || (text || '').toLowerCase().includes(term);
+        cardEl.style.display = match ? 'flex' : 'none';
+      }
+    });
+
     archiveOverlay.classList.add('open');
   }
+
 
     async function startNewChat(){
     if (state.history.length > 0 && state.activeId !== 'default') {
