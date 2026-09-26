@@ -954,6 +954,7 @@
   let isSpeaking = false;
   let pendingSpokenReferences = null;
   let lastSpokenText = '';
+  const audioPrefetchCache = new Map(); // rawText -> Promise<string|null> (blob URL)
 
   function stopSpeech() {
     speechQueue = [];
@@ -969,12 +970,7 @@
     processSpeechQueue();
   }
 
-  async function processSpeechQueue() {
-    if (isSpeaking || speechQueue.length === 0) return;
-    isSpeaking = true;
-    stopListening();
-    const rawText = speechQueue.shift();
-
+  function sanitizeForSpeech(rawText) {
     let cleanText = rawText
       .replace(/```(?:copy|draft|quote)\b[^\n]*\n?/gi, ` Here is a note I have prepared for you to copy, ${state.honorific}: `)
       .replace(/```[a-zA-Z0-9_-]*\b[^\n]*\n?/g, ' ')
@@ -982,7 +978,6 @@
       .replace(/`([^`]+)`/g, '$1')
       .replace(/`+/g, '')
       .replace(/(\*\*|__|\*|_|#)/g, '');
-
 
     cleanText = cleanText
       .replace(/&ldquo;|&#8220;|“/gi, ' quote, ')
@@ -1003,6 +998,34 @@
     cleanText = cleanText.replace(/https?:\/\/\S+|www\.\S+/gi, '');
     cleanText = cleanText.replace(/(mailto|sms|tel|geo):\S+/gi, '');
     cleanText = cleanText.replace(/<[^>]*>/g, '').trim();
+    return cleanText;
+  }
+
+  async function fetchTtsBlobUrl(cleanText) {
+    try {
+      const resp = await fetch('https://us-central1-jeeves-login-6391e.cloudfunctions.net/synthesizeSpeech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: cleanText, rate: state.ttsRate, speakingRate: state.ttsRate, userId: window.auth?.currentUser?.uid })
+      });
+      return resp.ok ? URL.createObjectURL(await resp.blob()) : null;
+    } catch (e) { return null; }
+  }
+
+  function prefetchTts(rawText) {
+    if (!rawText || audioPrefetchCache.has(rawText)) return;
+    const cleanText = sanitizeForSpeech(rawText);
+    if (cleanText) audioPrefetchCache.set(rawText, fetchTtsBlobUrl(cleanText));
+  }
+
+  async function processSpeechQueue() {
+    if (isSpeaking || speechQueue.length === 0) return;
+    isSpeaking = true;
+    stopListening();
+    const rawText = speechQueue.shift();
+    const cleanText = sanitizeForSpeech(rawText);
+
+    if (speechQueue.length > 0 && getTtsQuota() < 980000) prefetchTts(speechQueue[0]);
 
     if (cleanText) {
       lastSpokenText = cleanText;
@@ -1011,21 +1034,14 @@
 
       if (quota < 980000) {
         try {
-          const ttsPayload = { text: cleanText, rate: state.ttsRate, speakingRate: state.ttsRate, userId: window.auth?.currentUser?.uid };
-          // console.log('Jeeves TTS Payload:', ttsPayload);
-          const resp = await fetch('https://us-central1-jeeves-login-6391e.cloudfunctions.net/synthesizeSpeech', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(ttsPayload)
-          });
-          if (resp.ok) {
-            // console.log('Cloud TTS HTTP status:', resp.status, '| Requested rate:', state.ttsRate);
-            const blob = await resp.blob();
-            const url = URL.createObjectURL(blob);
+          const audioUrl = audioPrefetchCache.has(rawText)
+            ? await audioPrefetchCache.get(rawText)
+            : await fetchTtsBlobUrl(cleanText);
+          audioPrefetchCache.delete(rawText);
+          if (audioUrl) {
             await new Promise((resolve) => {
-              ttsAudio.src = url;
+              ttsAudio.src = audioUrl;
               ttsAudio.playbackRate = state.ttsRate || 1.0;
-              // console.log('HTML5 Audio active playbackRate:', ttsAudio.playbackRate);
               ttsAudio.onended = resolve;
               ttsAudio.onerror = resolve;
               ttsAudio.play().catch(resolve);
@@ -1747,7 +1763,7 @@
               const limit = refMatch ? refMatch.index : fullText.length;
               let unspoken = fullText.slice(speechIndex, limit);
               let match;
-              while ((match = unspoken.match(/^[\s\S]*?[.!?](?=\s|$)/))) {
+              while ((match = unspoken.match(/^[\s\S]*?(?<!\b(?:Mr|Mrs|Ms|Dr|Prof|Rev|etc|e\.g|i\.e))[.!?](?=\s|$)/))) {
                 const sentence = match[0].trim();
                 speechIndex += match[0].length;
                 if (sentence) speak(sentence);
