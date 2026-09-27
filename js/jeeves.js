@@ -41,7 +41,9 @@
   const LS_KEY_PRICING = 'jeeves_pricing'; // { [modelName]: { inputPerM, outputPerM, free } }
   const LS_KEY_USAGE = 'jeeves_usage_log';
   const LS_KEY_TTS_QUOTA = 'jeeves_tts_quota';
+  const LS_KEY_CUSTOM_STORIES = 'jeeves_custom_stories';
   const LS_KEY_CONVERSATIONS = 'jeeves_archives';
+
   const LS_KEY_ACTIVE = 'jeeves_active_id';
   const MAX_TURNS_SENT = 24; // messages (not pairs) sent as context to the API
 
@@ -78,6 +80,7 @@
     usageLog: JSON.parse(localStorage.getItem(LS_KEY_USAGE)) || [],
     ttsQuota: JSON.parse(localStorage.getItem(LS_KEY_TTS_QUOTA)) || { count: 0, month: '' },
     ttsRate: parseFloat(localStorage.getItem('jeeves_tts_rate')) || 1.0,
+    customStories: JSON.parse(localStorage.getItem(LS_KEY_CUSTOM_STORIES) || '[]'),
     activeArchiveTab: 'archives',
     storyCatalogue: [
       { id: 'agatha-bloomer', title: 'Aunt Agatha Makes a Bloomer', file: 'stories/agatha-bloomer.lit' }
@@ -2176,6 +2179,11 @@
   }
 
   async function preloadStoryText(story) {
+    if (!story) return '';
+    if (story.rawLit) {
+      state.storyTextCache.set(story.id, story.rawLit);
+      return story.rawLit;
+    }
     if (state.storyTextCache.has(story.id)) return state.storyTextCache.get(story.id);
     try {
       const res = await fetch(story.file);
@@ -2190,7 +2198,134 @@
     return '';
   }
 
-    function renderLibrary() {
+  async function parseStoryToLit(rawText, title) {
+    const model = getModelForConvoType('general');
+    const url = `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${encodeURIComponent(state.apiKey)}`;
+    const prompt = `Convert the following public domain P.G. Wodehouse story excerpt into proprietary line-by-line format where every single sentence or sentence clause is prefixed with [Speaker Name].
+Rules:
+1. Retain ALL original prose without omitting or summarizing any text.
+2. Tag narrator prose as [Bertie] (or the appropriate narrator).
+3. Tag spoken dialogue with the character speaking (e.g. [Jeeves], [Aunt Agatha], [Bingo]).
+4. Each entry must be on a new line: [Speaker] Text.
+
+Story Excerpt:
+${rawText}`;
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.2 }
+      })
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `Parsing error ${resp.status}`);
+    }
+    const data = await resp.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+  }
+
+
+  function openAddStoryModal() {
+    let modal = document.getElementById('story-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'story-modal';
+      modal.className = 'modal-overlay';
+      modal.innerHTML = `
+        <div class="modal" style="max-width: 580px;">
+          <div class="modal-header">
+            <h2>Add Story to Library</h2>
+            <button class="icon-btn" id="close-story-modal" aria-label="Close">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="field">
+              <label for="story-title-input">Story Title</label>
+              <input type="text" id="story-title-input" placeholder="e.g. The Inimitable Jeeves - Chapter 1">
+            </div>
+            <div class="field">
+              <label for="story-file-upload">Upload Text File (.txt / .lit)</label>
+              <input type="file" id="story-file-upload" accept=".txt,.lit" style="margin-bottom:8px;">
+            </div>
+            <div class="field" style="margin-bottom:0;">
+              <label for="story-text-input">Or Paste Story Prose</label>
+              <textarea id="story-text-input" rows="8" style="width:100%; background:var(--ink-deep); border:1px solid var(--hairline); color:var(--parchment); border-radius:8px; padding:10px; font-family:var(--font-ui); font-size:13px; resize:vertical;" placeholder="Paste original story text here..."></textarea>
+            </div>
+            <div id="story-parse-status" style="margin-top:10px; font-size:12px; color:var(--brass-bright); font-style:italic;"></div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-primary" id="save-story-btn" type="button">Parse & Add to Library</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+
+      modal.querySelector('#close-story-modal').onclick = () => modal.classList.remove('open');
+      modal.onclick = (e) => { if (e.target === modal) modal.classList.remove('open'); };
+
+      modal.querySelector('#story-file-upload').onchange = (e) => {
+        const file = e.target.files?.[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+            modal.querySelector('#story-text-input').value = evt.target.result;
+            if (!modal.querySelector('#story-title-input').value) {
+              modal.querySelector('#story-title-input').value = file.name.replace(/\.[^/.]+$/, '');
+            }
+          };
+          reader.readAsText(file);
+        }
+      };
+
+      modal.querySelector('#save-story-btn').onclick = async () => {
+        const title = modal.querySelector('#story-title-input').value.trim();
+        const raw = modal.querySelector('#story-text-input').value.trim();
+        const statusEl = modal.querySelector('#story-parse-status');
+        const saveBtn = modal.querySelector('#save-story-btn');
+
+        if (!title || !raw) {
+          alert('Please provide both a title and story text, Sir.');
+          return;
+        }
+
+        saveBtn.disabled = true;
+        statusEl.textContent = 'Jeeves is organizing the dialogue and narrative prose…';
+
+        try {
+          let litContent = raw;
+          // If not already in .lit format, parse via Gemini
+          if (!/^\s*\[[^\]]+\]/m.test(raw)) {
+            litContent = await parseStoryToLit(raw, title);
+          }
+
+          const storyObj = {
+            id: 'custom-' + Date.now(),
+            title: title,
+            rawLit: litContent
+          };
+
+          state.customStories.push(storyObj);
+          localStorage.setItem(LS_KEY_CUSTOM_STORIES, JSON.stringify(state.customStories));
+          modal.classList.remove('open');
+          modal.querySelector('#story-title-input').value = '';
+          modal.querySelector('#story-text-input').value = '';
+          statusEl.textContent = '';
+          renderLibrary();
+        } catch (err) {
+          console.error(err);
+          alert('A difficulty occurred during parsing: ' + err.message);
+          statusEl.textContent = '';
+        } finally {
+          saveBtn.disabled = false;
+        }
+      };
+    }
+    modal.classList.add('open');
+  }
+
+  function renderLibrary() {
     ensureArchiveTabs();
     if (!archiveContent) return;
     archiveContent.innerHTML = '';
@@ -2199,13 +2334,18 @@
     toolbar.className = 'archive-panel-toolbar';
     toolbar.innerHTML = `
       <input type="text" id="search-stories" placeholder="Search stories…" aria-label="Search stories">
+      <button id="add-story-btn" class="archive-btn" type="button" title="Add Story" style="padding:7px 12px;">＋</button>
     `;
     archiveContent.appendChild(toolbar);
+
+    toolbar.querySelector('#add-story-btn')?.addEventListener('click', openAddStoryModal);
 
     const grid = document.createElement('div');
     grid.className = 'story-book-grid';
 
-    state.storyCatalogue.forEach(story => {
+    const fullCatalogue = [...state.storyCatalogue, ...state.customStories];
+
+    fullCatalogue.forEach(story => {
       preloadStoryText(story);
       const card = document.createElement('div');
       card.className = 'story-book-card';
@@ -2268,7 +2408,7 @@
       const term = e.target.value.toLowerCase();
       const cards = Array.from(grid.querySelectorAll('.story-book-card'));
       for (const cardEl of cards) {
-        const story = state.storyCatalogue.find(s => s.id === cardEl.dataset.id);
+        const story = fullCatalogue.find(s => s.id === cardEl.dataset.id);
         const text = await preloadStoryText(story);
         const match = !term || (story?.title || '').toLowerCase().includes(term) || (text || '').toLowerCase().includes(term);
         cardEl.style.display = match ? 'flex' : 'none';
@@ -2277,7 +2417,6 @@
 
     archiveOverlay.classList.add('open');
   }
-
 
     async function startNewChat(){
     if (state.history.length > 0 && state.activeId !== 'default') {
