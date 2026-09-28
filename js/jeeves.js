@@ -42,6 +42,8 @@
   const LS_KEY_USAGE = 'jeeves_usage_log';
   const LS_KEY_TTS_QUOTA = 'jeeves_tts_quota';
   const LS_KEY_CUSTOM_STORIES = 'jeeves_custom_stories';
+  const LS_KEY_STORY_OVERRIDES = 'jeeves_story_overrides'; // { [builtInStoryId]: editedRawLitText }
+  const LS_KEY_STORY_CHARACTERS = 'jeeves_story_characters'; // { [storyId]: ['Bertie','Jeeves',...] }
   const LS_KEY_CONVERSATIONS = 'jeeves_archives';
 
   const LS_KEY_ACTIVE = 'jeeves_active_id';
@@ -81,6 +83,8 @@
     ttsQuota: JSON.parse(localStorage.getItem(LS_KEY_TTS_QUOTA)) || { count: 0, month: '' },
     ttsRate: parseFloat(localStorage.getItem('jeeves_tts_rate')) || 1.0,
     customStories: JSON.parse(localStorage.getItem(LS_KEY_CUSTOM_STORIES) || '[]'),
+    storyOverrides: JSON.parse(localStorage.getItem(LS_KEY_STORY_OVERRIDES) || '{}'),
+    storyCharacters: JSON.parse(localStorage.getItem(LS_KEY_STORY_CHARACTERS) || '{}'),
     activeArchiveTab: 'archives',
     storyCatalogue: [
       { id: 'agatha-bloomer', title: 'Aunt Agatha Makes a Bloomer', file: 'stories/agatha-bloomer.lit' }
@@ -2180,6 +2184,11 @@
 
   async function preloadStoryText(story) {
     if (!story) return '';
+    const override = state.storyOverrides && state.storyOverrides[story.id];
+    if (override) {
+      state.storyTextCache.set(story.id, override);
+      return override;
+    }
     if (story.rawLit) {
       state.storyTextCache.set(story.id, story.rawLit);
       return story.rawLit;
@@ -2207,6 +2216,11 @@ Rules:
 2. Tag narrator prose as [Bertie] (or the appropriate narrator).
 3. Tag spoken dialogue with the character speaking (e.g. [Jeeves], [Aunt Agatha], [Bingo]).
 4. Each entry must be on a new line: [Speaker] Text.
+5. Never let one line mix quoted dialogue with its narrative attribution tag (e.g. "said Jeeves with a sniff"). Split such sentences into two consecutive lines: the quoted words tagged to the speaking character, and the "said/replied/muttered ..." attribution tagged to the narrator.
+   Example — wrong: [Jeeves] "Very good, sir," said Jeeves with a sniff.
+   Example — right:
+   [Jeeves] "Very good, sir,"
+   [Bertie] said Jeeves with a sniff.
 
 Story Excerpt:
 ${rawText}`;
@@ -2227,6 +2241,285 @@ ${rawText}`;
     return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
   }
 
+  async function reviewLitLines(lines) {
+    const model = getModelForConvoType('general');
+    const url = `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${encodeURIComponent(state.apiKey)}`;
+    const numbered = lines.map((l, i) => `${i + 1}. [${l.speaker}] ${l.text}`).join('\n');
+    const prompt = `You are proofreading a script converted from a P.G. Wodehouse story into "[Speaker] Text" lines. Bertie is the narrator: narration and dialogue attribution tags (e.g. "said Jeeves with a sniff") belong to [Bertie], while quoted speech belongs to the character speaking.
+Find lines whose speaker is probably wrong: attribution tags stuck onto a character's dialogue, quoted speech tagged to the narrator when it clearly belongs to someone else, narration tagged to a character, two speakers' words merged into one line, or the wrong character credited.
+Return ONLY a JSON array of objects like {"line": 12, "reason": "short explanation"}. Include only genuinely suspicious lines, at most 30. Return [] if there are none.
+
+Script:
+${numbered}`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.1, responseMimeType: 'application/json' }
+      })
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `Review error ${resp.status}`);
+    }
+    const data = await resp.json();
+    const raw = (data.candidates?.[0]?.content?.parts?.[0]?.text || '[]').replace(/```json|```/g, '').trim();
+    const flags = JSON.parse(raw);
+    return Array.isArray(flags) ? flags : [];
+  }
+    async function findLinesForCharacter(lines, name) {
+    const model = getModelForConvoType('general');
+    const url = `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${encodeURIComponent(state.apiKey)}`;
+    const numbered = lines.map((l, i) => `${i + 1}. [${l.speaker}] ${l.text}`).join('\n');
+    const prompt = `Below is a script converted from a P.G. Wodehouse story into "[Speaker] Text" lines. Bertie is the narrator. A new character, "${name}", has just been added, but some of her or his spoken dialogue is probably still tagged to another speaker.
+Find every line of quoted speech that is actually spoken by ${name} but is currently tagged to a different speaker. Do NOT include narration or attribution tags (like "said ${name}"), which stay with the narrator, and do not include lines already tagged [${name}].
+Return ONLY a JSON array of objects like {"line": 12, "reason": "short explanation"}. Return [] if there are none.
+
+Script:
+${numbered}`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.1, responseMimeType: 'application/json' }
+      })
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `Scan error ${resp.status}`);
+    }
+    const data = await resp.json();
+    const raw = (data.candidates?.[0]?.content?.parts?.[0]?.text || '[]').replace(/```json|```/g, '').trim();
+    const found = JSON.parse(raw);
+    return Array.isArray(found) ? found : [];
+  }
+  function downloadLitFile(title, text) {
+    if (!text) return;
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const safeName = (title || 'story').replace(/[^a-z0-9\-_ ]+/gi, '').trim().replace(/\s+/g, '_') || 'story';
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${safeName}.lit`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function openStoryReviewModal(title, initialLit, onSave, knownCharacters) {
+    let modal = document.getElementById('review-story-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'review-story-modal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+
+    const lines = initialLit.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const parsedLines = lines.map(line => {
+      const match = line.match(/^\s*\[([^\]]+)\]\s*(.*)$/);
+      return match ? { speaker: match[1].trim(), text: match[2].trim() } : { speaker: 'Bertie', text: line };
+    });
+
+    const speakers = Array.from(new Set([...(knownCharacters || []), ...parsedLines.map(p => p.speaker), 'Bertie', 'Jeeves']));
+
+    modal.innerHTML = `
+      <div class="modal" style="max-width: 680px; height: 85vh; display:flex; flex-direction:column;">
+        <div class="modal-header">
+          <h2>Review Script: ${escapeHtml(title)}</h2>
+          <button class="icon-btn" id="close-review-modal" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body" style="flex:1; overflow-y:auto; padding-right:6px;">
+          <p class="field-help" style="margin-bottom:12px;">Verify and refine the character assignments before saving to your library.</p>
+          <div style="display:flex; gap:6px; margin-bottom:12px;">
+            <input type="text" id="new-character-input" placeholder="Add a character (e.g. Florence)" style="flex:1; font-size:12px; padding:6px 8px; background:var(--ink-panel-2); color:var(--parchment); border:1px solid var(--hairline); border-radius:6px;">
+            <button class="btn-secondary" id="add-character-btn" type="button" style="padding:6px 12px; font-size:12px;">+ Add</button>
+            <button class="btn-secondary" id="ai-review-btn" type="button" style="padding:6px 12px; font-size:12px;">🔍 AI Review</button>
+          </div>
+          <div id="ai-review-status" class="field-help" style="margin-bottom:8px;"></div>
+          
+          <div id="review-lines-container" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="cancel-review-btn" type="button">Cancel</button>
+          <button class="btn-primary" id="save-reviewed-story-btn" type="button">Save to Library</button>
+        </div>
+      </div>
+    `;
+
+    function fitTextarea(t) {
+      t.style.height = 'auto';
+      t.style.height = t.scrollHeight + 'px';
+    }
+
+    function buildReviewRow(speaker, text) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; align-items:flex-start; background:var(--ink-deep);padding:8px; border-radius:8px; border:1px solid var(--hairline);';
+
+      const select = document.createElement('select');
+      select.style.cssText = 'width:125px; flex-shrink:0; font-size:12px; padding:6px; background:var(--ink-panel-2); color:var(--parchment); border:1px solid var(--hairline); border-radius:6px;';
+      speakers.forEach(spk => {
+        const opt = document.createElement('option');
+        opt.value = spk;
+        opt.textContent = spk;
+        if (spk.toLowerCase() === speaker.toLowerCase()) opt.selected = true;
+        select.appendChild(opt);
+      });
+
+      const input = document.createElement('textarea');
+      input.rows = 1;
+      input.value = text;
+      input.style.cssText = 'flex:1; font-size:13px; padding:6px 8px; background:var(--ink-panel-2); color:var(--parchment); border:1px solid var(--hairline); border-radius:6px; resize:none; overflow:hidden; font-family:var(--font-ui);';
+      input.oninput = () => fitTextarea(input);
+
+      const btnStyle = 'flex-shrink:0; width:26px; background:transparent; border:1px solid var(--hairline); color:var(--parchment); border-radius:6px; cursor:pointer; font-size:12px;';
+
+      const splitBtn = document.createElement('button');
+      splitBtn.type = 'button';
+      splitBtn.textContent = '✂';
+      splitBtn.title = 'Split at cursor — carve off a misattributed narrator tag';
+      splitBtn.style.cssText = btnStyle;
+      splitBtn.onclick = () => {
+        const pos = input.selectionStart;
+        const before = input.value.slice(0, pos).trim();
+        const after = input.value.slice(pos).trim();
+        if (!before || !after) return;
+        input.value = before;
+        const newRow = buildReviewRow('Bertie', after);
+        row.after(newRow);
+        fitTextarea(input);
+        fitTextarea(newRow.querySelector('textarea'));
+      };
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.textContent = '✕';
+      delBtn.title = 'Delete this line';
+      delBtn.style.cssText = btnStyle;
+      delBtn.onclick = () => row.remove();
+
+      row.appendChild(select);
+      row.appendChild(input);
+      row.appendChild(splitBtn);
+      row.appendChild(delBtn);
+      return row;
+    }
+
+    const container = modal.querySelector('#review-lines-container');
+    parsedLines.forEach(item => container.appendChild(buildReviewRow(item.speaker, item.text)));
+
+    function addCharacterOption(name) {
+      name = (name || '').trim();
+      if (!name || speakers.some(s => s.toLowerCase() === name.toLowerCase())) return null;
+      speakers.push(name);
+      if (!state.voiceProfiles[name]) {
+        state.voiceProfiles[name] = { pitch: 0, browserPitch: 1.0 };
+        localStorage.setItem(LS_KEY_VOICE_PROFILES, JSON.stringify(state.voiceProfiles));
+      }
+      container.querySelectorAll('select').forEach(sel => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        sel.appendChild(opt);
+      });
+      return name;
+    }
+
+    async function reassignToCharacter(name) {
+      const status = modal.querySelector('#ai-review-status');
+      const rows = Array.from(container.children);
+      const current = rows.map(r => ({ speaker: r.querySelector('select').value, text: r.querySelector('textarea').value.trim() }));
+      status.textContent = `Scanning for ${name}'s lines…`;
+      try {
+        const found = await findLinesForCharacter(current, name);
+        let first = null, count = 0;
+        found.forEach(f => {
+          const row = rows[Number(f.line) - 1];
+          if (!row) return;
+          const select = row.querySelector('select');
+          const oldSpeaker = select.value;
+          if (oldSpeaker === name) return;
+          select.value = name;
+          row.style.borderColor = '#e0b45a';
+          row.querySelector('.flag-note')?.remove();
+          const note = document.createElement('div');
+          note.className = 'flag-note';
+          note.style.cssText = 'flex-basis:100%; font-size:11px; color:#e0b45a;';
+          note.textContent = `↪ Moved from ${oldSpeaker} to ${name} — ${f.reason || 'check this line'}`;
+          row.appendChild(note);
+          first = first || row;
+          count++;
+        });
+        status.textContent = count ? `${count} line(s) reassigned to ${name} — check the highlighted rows.` : `No lines found for ${name}.`;
+        if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (err) {
+        status.textContent = 'Scan failed: ' + err.message;
+      }
+    }
+
+    modal.querySelector('#add-character-btn').onclick = async () => {
+      const input = modal.querySelector('#new-character-input');
+      const added = addCharacterOption(input.value);
+      input.value = '';
+      input.focus();
+      if (added && confirm(`Scan the script for lines that belong to ${added}?`)) await reassignToCharacter(added);
+    };
+    modal.querySelector('#new-character-input').onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); modal.querySelector('#add-character-btn').click(); }
+    };
+
+        modal.querySelector('#ai-review-btn').onclick = async () => {
+      const btn = modal.querySelector('#ai-review-btn');
+      const status = modal.querySelector('#ai-review-status');
+      const rows = Array.from(container.children);
+      rows.forEach(r => { r.style.borderColor = 'var(--hairline)'; r.querySelector('.flag-note')?.remove(); });
+      const current = rows.map(r => ({ speaker: r.querySelector('select').value, text: r.querySelector('textarea').value.trim() }));
+      btn.disabled = true;
+      status.textContent = 'Reviewing…';
+      try {
+        const flags = await reviewLitLines(current);
+        let first = null, count = 0;
+        flags.forEach(f => {
+          const row = rows[Number(f.line) - 1];
+          if (!row) return;
+          row.style.borderColor = '#e0b45a';
+          const note = document.createElement('div');
+          note.className = 'flag-note';
+          note.style.cssText = 'flex-basis:100%; font-size:11px; color:#e0b45a;';
+          note.textContent = '⚠ ' + (f.reason || 'Check this line');
+          row.appendChild(note);
+          first = first || row;
+          count++;
+        });
+        status.textContent = count ? `${count} line(s) flagged — check the highlighted rows.` : 'No problems found.';
+        if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (err) {
+        status.textContent = 'Review failed: ' + err.message;
+      }
+      btn.disabled = false;
+    };
+    modal.querySelector('#close-review-modal').onclick = () => modal.classList.remove('open');
+    modal.querySelector('#cancel-review-btn').onclick = () => modal.classList.remove('open');
+    modal.onclick = (e) => { if (e.target === modal) modal.classList.remove('open'); };
+
+    modal.querySelector('#save-reviewed-story-btn').onclick = () => {
+      const rows = container.children;
+      const resultLines = [];
+      for (let r of rows) {
+        const spk = r.querySelector('select').value;
+        const txt = r.querySelector('textarea').value.trim();
+        if (txt) resultLines.push(`[${spk}] ${txt}`);
+      }
+      modal.classList.remove('open');
+      onSave(resultLines.join('\n'), speakers);
+    };
+
+    modal.classList.add('open');
+    container.querySelectorAll('textarea').forEach(fitTextarea);
+  }
 
   function openAddStoryModal() {
     let modal = document.getElementById('story-modal');
@@ -2363,6 +2656,8 @@ ${rawText}`;
       const bookmarkText = progressIdx > 0 ? `Bookmark: ${pct}%` : 'Bookmark: 0%';
       const isCurrent = JeevesReader.storyId === story.id && JeevesReader.isPlaying;
       const btnLabel = isCurrent ? '⏸ Pause' : (progressIdx > 0 ? '▶ Resume' : '▶ Play');
+      const isCustom = state.customStories.some(s => s.id === story.id);
+      const iconBtnStyle = 'flex:1; background:transparent; border:1px solid rgba(212,175,55,0.45); color:#e9dfc8; border-radius:6px; padding:4px 2px; font-size:10.5px; cursor:pointer; line-height:1.3;';
 
       card.innerHTML = `
         <div class="story-book-title">${escapeHtml(story.title)}</div>
@@ -2371,6 +2666,11 @@ ${rawText}`;
           <button class="archive-btn open-btn read-story-btn" type="button" style="width:100%; font-size:12px; padding:6px 6px;">
             ${btnLabel}
           </button>
+          <div style="display:flex; gap:4px; margin-top:6px;">
+            <button class="edit-story-btn" type="button" title="Edit Script" style="${iconBtnStyle}">✎ Edit</button>
+            ${isCustom ? `<button class="download-story-btn" type="button" title="Download .lit" style="${iconBtnStyle}">⬇</button>` : ''}
+            ${isCustom ? `<button class="delete-story-btn" type="button" title="Remove from Library" style="${iconBtnStyle}">🗑</button>` : ''}
+          </div>
         </div>
       `;
 
@@ -2393,6 +2693,43 @@ ${rawText}`;
             renderLibrary();
           });
         }
+      });
+
+      card.querySelector('.edit-story-btn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const currentText = await preloadStoryText(story);
+        openStoryReviewModal(story.title, currentText || '', (finalLit, speakers) => {
+          if (isCustom) {
+            const target = state.customStories.find(s => s.id === story.id);
+            if (target) target.rawLit = finalLit;
+            localStorage.setItem(LS_KEY_CUSTOM_STORIES, JSON.stringify(state.customStories));
+          } else {
+            state.storyOverrides[story.id] = finalLit;
+            localStorage.setItem(LS_KEY_STORY_OVERRIDES, JSON.stringify(state.storyOverrides));
+          }
+          state.storyCharacters[story.id] = speakers;
+          localStorage.setItem(LS_KEY_STORY_CHARACTERS, JSON.stringify(state.storyCharacters));
+          state.storyTextCache.set(story.id, finalLit);
+          renderLibrary();
+        }, state.storyCharacters[story.id]);
+      });
+
+      card.querySelector('.download-story-btn')?.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const text = await preloadStoryText(story);
+        downloadLitFile(story.title, text);
+      });
+
+      card.querySelector('.delete-story-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!confirm(`Remove "${story.title}" from your library, Sir?`)) return;
+        state.customStories = state.customStories.filter(s => s.id !== story.id);
+        localStorage.setItem(LS_KEY_CUSTOM_STORIES, JSON.stringify(state.customStories));
+        state.storyTextCache.delete(story.id);
+        if (JeevesReader.storyId === story.id) {
+          JeevesReader.pause();
+        }
+        renderLibrary();
       });
 
       card.addEventListener('click', () => {
