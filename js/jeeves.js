@@ -134,9 +134,20 @@
 
 
       if (user) {
-        pullCloudArchives();
-        pullCloudStories();
-        pullVoiceProfiles();
+        (async () => {
+          await Promise.all([
+            pullCloudArchives(),
+            pullCloudStories(),
+            pullVoiceProfiles()
+          ]);
+          if (archiveOverlay && archiveOverlay.classList.contains('open')) {
+            if (state.activeArchiveTab === 'library') {
+              renderLibrary();
+            } else {
+              renderArchives();
+            }
+          }
+        })();
       }
     });
   }
@@ -218,8 +229,11 @@
         } else {
           const idx = state.customStories.findIndex(s => s.id === id);
           const entry = { id, title: data.title, rawLit: data.lit, addedByName: data.addedByName };
-          if (idx >= 0) state.customStories[idx] = entry;
-          else state.customStories.push(entry);
+          if (idx >= 0) {
+            state.customStories[idx] = entry;
+          } else {
+            state.customStories.push(entry);
+          }
         }
       });
       try {
@@ -3001,13 +3015,16 @@ ${numbered}`;
   }
 
   document.getElementById('new-chat-btn')?.addEventListener('click', startNewChat);
-  document.getElementById('archive-btn')?.addEventListener('click', () => {
-    renderArchives();
+  document.getElementById('archive-btn')?.addEventListener('click', async () => {
     if (isAuthenticated && window.db && window.auth?.currentUser) {
-      pullCloudArchives();
+      await Promise.all([pullCloudArchives(), pullCloudStories()]);
+    }
+    if (state.activeArchiveTab === 'library') {
+      renderLibrary();
+    } else {
+      renderArchives();
     }
   });
-
 
   function closeArchives(){
     archiveOverlay?.classList.remove('open');
