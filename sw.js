@@ -1,5 +1,5 @@
-const CACHE_NAME = 'v2';
-const ASSETS = ['/', '/index.html', '/css/styles.css', '/js/jeeves.js'];
+const CACHE_NAME = 'v3';
+const ASSETS = ['/', '/index.html', '/css/jeeves.css', '/js/jeeves.js'];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
