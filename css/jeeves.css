@@ -777,7 +777,32 @@ header.letterhead{
     cursor: pointer;
     transition: transform 0.15s ease, border-color 0.15s ease;
     text-align: center;
+    position: relative;
   }
+  .story-book-card.dragging{
+    opacity: 0.5;
+    transform: scale(1.03);
+    z-index: 5;
+  }
+  .story-drag-handle{
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: var(--brass-bright);
+    background: rgba(0,0,0,0.35);
+    border-radius: 5px;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .story-drag-handle:active{ cursor: grabbing; }
   .story-book-card:hover {
     transform: translateY(-2px);
     border-color: var(--brass-bright);
@@ -893,6 +918,11 @@ header.letterhead{
     justify-content:space-between;
     margin-bottom:14px;
   }
+  #voice-settings-btn {
+    background: #fff;
+    border: solid var(--brass) 2px;
+    font-size: 15px;
+  }
   .modal-header h2{
     font-family:var(--font-display);
     font-size:24px;
@@ -908,6 +938,84 @@ header.letterhead{
     letter-spacing:0.8px;
     color:var(--parchment-dim);
     margin-bottom:7px;
+  }
+
+    .btn-secondary:hover{ 
+    border-color:var(--claret); 
+    color:var(--claret) 
+  }
+
+  /* Character Voices modal */
+  .voice-modal-intro{
+    font-size:12px;
+    color:var(--parchment-dim);
+    margin-top:0;
+  }
+  .voice-row{
+    border-bottom:1px solid var(--hairline);
+    padding:10px 0;
+  }
+  .voice-row-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:6px;
+  }
+  .voice-row-header strong{
+    font-family:var(--font-display);
+    font-size:16px;
+    color:var(--parchment);
+  }
+  .voice-row .test-voice-btn{
+    padding:4px 10px;
+    font-size:11px;
+  }
+  .voice-slider-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:12px;
+    color:var(--parchment-dim);
+    margin-bottom:4px;
+  }
+  .voice-slider-row:last-child{ margin-bottom:0; }
+  .voice-slider-row input[type="range"]{ flex:1; }
+  .voice-val{
+    width:34px;
+    text-align:right;
+    color:var(--parchment-dim);
+  }
+
+  input[type="range"]{
+    -webkit-appearance:none;
+    appearance:none;
+    height:4px;
+    background:var(--ink-deep);
+    border-radius:2px;
+    outline:none;
+  }
+  input[type="range"]::-webkit-slider-thumb{
+    -webkit-appearance:none;
+    appearance:none;
+    width:16px;
+    height:16px;
+    border-radius:50%;
+    background:var(--brass);
+    border:1px solid var(--brass-bright);
+    cursor:pointer;
+  }
+  input[type="range"]::-moz-range-thumb{
+    width:16px;
+    height:16px;
+    border-radius:50%;
+    background:var(--brass);
+    border:1px solid var(--brass-bright);
+    cursor:pointer;
+  }
+  input[type="range"]::-moz-range-track{
+    background:var(--ink-deep);
+    height:4px;
+    border-radius:2px;
   }
 
   /* Settings Section Cards & Headers */

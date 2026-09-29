@@ -44,6 +44,7 @@
   const LS_KEY_CUSTOM_STORIES = 'jeeves_custom_stories';
   const LS_KEY_STORY_OVERRIDES = 'jeeves_story_overrides'; // { [builtInStoryId]: editedRawLitText }
   const LS_KEY_STORY_CHARACTERS = 'jeeves_story_characters'; // { [storyId]: ['Bertie','Jeeves',...] }
+  const LS_KEY_LIBRARY_ORDER = 'jeeves_library_order'; // personal, device-only card order
   const LS_KEY_CONVERSATIONS = 'jeeves_archives';
 
   const LS_KEY_ACTIVE = 'jeeves_active_id';
@@ -85,6 +86,7 @@
     customStories: JSON.parse(localStorage.getItem(LS_KEY_CUSTOM_STORIES) || '[]'),
     storyOverrides: JSON.parse(localStorage.getItem(LS_KEY_STORY_OVERRIDES) || '{}'),
     storyCharacters: JSON.parse(localStorage.getItem(LS_KEY_STORY_CHARACTERS) || '{}'),
+    libraryOrder: JSON.parse(localStorage.getItem(LS_KEY_LIBRARY_ORDER) || '[]'),
     activeArchiveTab: 'archives',
     storyCatalogue: [],
     storyTextCache: new Map(),
@@ -226,7 +228,7 @@
           state.storyOverrides[id] = data.lit;
         } else {
           const idx = state.customStories.findIndex(s => s.id === id);
-          const entry = { id, title: data.title, rawLit: data.lit, addedByName: data.addedByName };
+          const entry = { id, title: data.title, rawLit: data.lit, addedByName: data.addedByName, createdAt: data.createdAt || 0 };
           if (idx >= 0) {
             state.customStories[idx] = entry;
           } else {
@@ -2618,6 +2620,124 @@ ${numbered}`;
     container.querySelectorAll('textarea').forEach(fitTextarea);
   }
 
+  function openVoiceSettingsModal() {
+    let modal = document.getElementById('voice-settings-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'voice-settings-modal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+
+    const names = Object.keys(state.voiceProfiles).sort((a, b) => {
+      if (a === 'Jeeves') return -1;
+      if (b === 'Jeeves') return 1;
+      return a.localeCompare(b);
+    });
+
+    const rowsHtml = names.map(name => {
+      const p = state.voiceProfiles[name];
+      const pitch = typeof p.pitch === 'number' ? p.pitch : 0;
+      const rate = typeof p.rate === 'number' ? p.rate : 1.0;
+      return `
+        <div class="voice-row" data-name="${escapeHtml(name)}">
+          <div class="voice-row-header">
+            <strong>${escapeHtml(name)}</strong>
+            <button type="button" class="test-voice-btn archive-btn">▶ Test</button>
+          </div>
+          <label class="voice-slider-row">
+            Pitch
+            <input type="range" class="pitch-slider" min="-20" max="20" step="0.5" value="${pitch}">
+            <span class="pitch-val voice-val">${pitch}</span>
+          </label>
+          <label class="voice-slider-row">
+            Rate
+            <input type="range" class="rate-slider" min="0.5" max="2.0" step="0.05" value="${rate}">
+            <span class="rate-val voice-val">${rate.toFixed(2)}</span>
+          </label>
+        </div>
+      `;
+    }).join('');
+
+    modal.innerHTML = `
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Character Voices</h2>
+          <button class="icon-btn" id="close-voice-modal" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="voice-modal-intro">Pitch and rate are applied on top of Jeeves' own voice, so every character is still recognizably read by him. Bigger jumps sound less natural — small nudges usually work best.</p>
+          <div id="voice-rows">${rowsHtml}</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="cancel-voice-modal" type="button">Cancel</button>
+          <button class="btn-primary" id="save-voice-modal" type="button">Save Voices</button>
+        </div>
+      </div>
+    `;
+
+    modal.querySelectorAll('.voice-row').forEach(row => {
+      const pitchSlider = row.querySelector('.pitch-slider');
+      const rateSlider = row.querySelector('.rate-slider');
+      const pitchVal = row.querySelector('.pitch-val');
+      const rateVal = row.querySelector('.rate-val');
+
+      pitchSlider.addEventListener('input', () => { pitchVal.textContent = pitchSlider.value; });
+      rateSlider.addEventListener('input', () => { rateVal.textContent = parseFloat(rateSlider.value).toFixed(2); });
+
+      row.querySelector('.test-voice-btn').addEventListener('click', async (e) => {
+        unlockAudio();
+        const btn = e.currentTarget;
+        const name = row.dataset.name;
+        const originalLabel = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '…';
+        const sample = name === 'Jeeves'
+          ? 'Very good, sir. I shall attend to it directly.'
+          : `Good heavens, this is how ${name} shall sound.`;
+        try {
+          const url = await fetchTtsBlobUrl(sample, parseFloat(pitchSlider.value), parseFloat(rateSlider.value));
+          if (url) {
+            await new Promise(resolve => {
+              ttsAudio.src = url;
+              ttsAudio.playbackRate = state.ttsRate || 1.0;
+              ttsAudio.onended = resolve;
+              ttsAudio.onerror = resolve;
+              ttsAudio.play().catch(resolve);
+            });
+          }
+        } catch (err) {
+          console.warn('Voice test failed:', err);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = originalLabel;
+        }
+      });
+    });
+
+    modal.querySelector('#close-voice-modal').onclick = () => modal.classList.remove('open');
+    modal.querySelector('#cancel-voice-modal').onclick = () => modal.classList.remove('open');
+    modal.onclick = (e) => { if (e.target === modal) modal.classList.remove('open'); };
+
+    modal.querySelector('#save-voice-modal').onclick = () => {
+      modal.querySelectorAll('.voice-row').forEach(row => {
+        const name = row.dataset.name;
+        const pitch = parseFloat(row.querySelector('.pitch-slider').value);
+        const rate = parseFloat(row.querySelector('.rate-slider').value);
+        state.voiceProfiles[name] = {
+          ...state.voiceProfiles[name],
+          pitch,
+          rate
+        };
+      });
+      try { localStorage.setItem(LS_KEY_VOICE_PROFILES, JSON.stringify(state.voiceProfiles)); } catch(e){}
+      pushVoiceProfilesToCloud();
+      modal.classList.remove('open');
+    };
+
+    modal.classList.add('open');
+  }
+
   function openAddStoryModal() {
     let modal = document.getElementById('story-modal');
     if (!modal) {
@@ -2716,6 +2836,87 @@ ${numbered}`;
     modal.classList.add('open');
   }
 
+  function orderedCatalogue() {
+    const full = [...state.storyCatalogue, ...state.customStories];
+    const byDefault = [...full].sort((a, b) => {
+      const aBuiltIn = state.storyCatalogue.some(s => s.id === a.id);
+      const bBuiltIn = state.storyCatalogue.some(s => s.id === b.id);
+      if (aBuiltIn !== bBuiltIn) return aBuiltIn ? -1 : 1;
+      return (a.createdAt || 0) - (b.createdAt || 0);
+    });
+    if (!state.libraryOrder.length) return byDefault;
+    const known = state.libraryOrder.filter(id => byDefault.some(s => s.id === id));
+    const unknown = byDefault.filter(s => !known.includes(s.id));
+    return [...known.map(id => byDefault.find(s => s.id === id)), ...unknown];
+  }
+
+  let dragState = null; // { card, grid, pointerId }
+
+  function wireDragHandle(handle, card, grid) {
+    if (!handle) return;
+    handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      dragState = { card, grid, pointerId: e.pointerId };
+      card.classList.add('dragging');
+    });
+  }
+
+  document.addEventListener('pointermove', (e) => {
+    if (!dragState || e.pointerId !== dragState.pointerId) return;
+    const { card, grid } = dragState;
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    const targetCard = under && under.closest('.story-book-card');
+    if (targetCard && targetCard !== card && targetCard.parentElement === grid) {
+      const rect = targetCard.getBoundingClientRect();
+      const before = e.clientX < rect.left + rect.width / 2;
+      grid.insertBefore(card, before ? targetCard : targetCard.nextSibling);
+    }
+  });
+
+  function endDrag(e) {
+    if (!dragState || e.pointerId !== dragState.pointerId) return;
+    const { card, grid } = dragState;
+    card.classList.remove('dragging');
+    state.libraryOrder = [...grid.children].map(c => c.dataset.id);
+    try { localStorage.setItem(LS_KEY_LIBRARY_ORDER, JSON.stringify(state.libraryOrder)); } catch(e){}
+    dragState = null;
+  }
+  document.addEventListener('pointerup', endDrag);
+  document.addEventListener('pointercancel', endDrag);
+
+  function wireDragHandle(handle, card, grid) {
+    if (!handle) return;
+    handle.draggable = true;
+    handle.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', card.dataset.id);
+      e.dataTransfer.effectAllowed = 'move';
+      card.classList.add('dragging');
+    });
+    handle.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+    });
+    handle.addEventListener('click', (e) => { e.stopPropagation(); });
+  }
+
+  function wireGridDropZone(grid) {
+    grid.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      const dragging = grid.querySelector('.story-book-card.dragging');
+      if (!dragging) return;
+      const targetCard = e.target.closest('.story-book-card');
+      if (targetCard && targetCard !== dragging && targetCard.parentElement === grid) {
+        const rect = targetCard.getBoundingClientRect();
+        const before = e.clientX < rect.left + rect.width / 2;
+        grid.insertBefore(dragging, before ? targetCard : targetCard.nextSibling);
+      }
+    });
+    grid.addEventListener('drop', (e) => {
+      e.preventDefault();
+      state.libraryOrder = [...grid.children].map(c => c.dataset.id);
+      try { localStorage.setItem(LS_KEY_LIBRARY_ORDER, JSON.stringify(state.libraryOrder)); } catch(err) {}
+    });
+  }
+
   function renderLibrary() {
     ensureArchiveTabs();
     if (!archiveContent) return;
@@ -2725,16 +2926,19 @@ ${numbered}`;
     toolbar.className = 'archive-panel-toolbar';
     toolbar.innerHTML = `
       <input type="text" id="search-stories" placeholder="Search stories…" aria-label="Search stories">
+      <button id="voice-settings-btn" class="archive-btn" type="button" title="Character Voices" style="padding:7px 12px;">🎙</button>
       <button id="add-story-btn" class="archive-btn" type="button" title="Add Story" style="padding:7px 12px;">＋</button>
     `;
     archiveContent.appendChild(toolbar);
 
+    toolbar.querySelector('#voice-settings-btn')?.addEventListener('click', openVoiceSettingsModal);
     toolbar.querySelector('#add-story-btn')?.addEventListener('click', openAddStoryModal);
 
     const grid = document.createElement('div');
     grid.className = 'story-book-grid';
+    wireGridDropZone(grid);
 
-    const fullCatalogue = [...(state.storyCatalogue || []), ...(state.customStories || [])];
+    const fullCatalogue = orderedCatalogue();
 
     fullCatalogue.forEach(story => {
       preloadStoryText(story);
@@ -2758,6 +2962,7 @@ ${numbered}`;
       const iconBtnStyle = 'flex:1; background:transparent; border:1px solid rgba(212,175,55,0.45); color:#e9dfc8; border-radius:6px; padding:4px 2px; font-size:10.5px; cursor:pointer; line-height:1.3;';
 
       card.innerHTML = `
+        <div class="story-drag-handle" title="Drag to reorder">⠿</div>
         <div class="story-book-title">${escapeHtml(story.title)}</div>
         <div>
           <div class="story-book-meta">${bookmarkText}</div>
@@ -2771,6 +2976,8 @@ ${numbered}`;
           </div>
         </div>
       `;
+
+      wireDragHandle(card.querySelector('.story-drag-handle'), card, grid);
 
       const playBtn = card.querySelector('.read-story-btn');
       playBtn.addEventListener('click', async (e) => {
