@@ -86,9 +86,7 @@
     storyOverrides: JSON.parse(localStorage.getItem(LS_KEY_STORY_OVERRIDES) || '{}'),
     storyCharacters: JSON.parse(localStorage.getItem(LS_KEY_STORY_CHARACTERS) || '{}'),
     activeArchiveTab: 'archives',
-    storyCatalogue: [
-      { id: 'agatha-bloomer', title: 'Aunt Agatha Makes a Bloomer', file: 'stories/agatha-bloomer.lit' }
-    ],
+    storyCatalogue: [],
     storyTextCache: new Map(),
   };
 
@@ -224,7 +222,7 @@
         const id = doc.id;
         state.storyTextCache.set(id, data.lit);
         if (data.characters) state.storyCharacters[id] = data.characters;
-        if (state.storyCatalogue.some(s => s.id === id)) {
+        if ((state.storyCatalogue || []).some(s => s.id === id)) {
           state.storyOverrides[id] = data.lit;
         } else {
           const idx = state.customStories.findIndex(s => s.id === id);
@@ -2302,16 +2300,6 @@
       return story.rawLit;
     }
     if (state.storyTextCache.has(story.id)) return state.storyTextCache.get(story.id);
-    try {
-      const res = await fetch(story.file);
-      if (res.ok) {
-        const text = await res.text();
-        state.storyTextCache.set(story.id, text);
-        return text;
-      }
-    } catch (e) {
-      console.warn('Could not cache story text:', e);
-    }
     return '';
   }
 
@@ -2746,7 +2734,7 @@ ${numbered}`;
     const grid = document.createElement('div');
     grid.className = 'story-book-grid';
 
-    const fullCatalogue = [...state.storyCatalogue, ...state.customStories];
+    const fullCatalogue = [...(state.storyCatalogue || []), ...(state.customStories || [])];
 
     fullCatalogue.forEach(story => {
       preloadStoryText(story);
@@ -2798,10 +2786,10 @@ ${numbered}`;
             return;
           }
           JeevesReader.load(text, story.id);
+          const playPromise = JeevesReader.play();
           renderLibrary();
-          JeevesReader.play().then(() => {
-            renderLibrary();
-          });
+          await playPromise;
+          renderLibrary();
         }
       });
 
@@ -3147,58 +3135,9 @@ ${numbered}`;
   inputEl?.addEventListener('input', autoResizeInput);
   autoResizeInput();
 
-
-  function addReaderTestButton() {
-    const row = document.createElement('div');
-    row.className = 'msg-row system-note';
-    const bubble = document.createElement('div');
-    bubble.className = 'bubble';
-    bubble.style.display = 'flex';
-    bubble.style.gap = '8px';
-    bubble.style.alignItems = 'center';
-    bubble.style.justifyContent = 'center';
-
-    const playBtn = document.createElement('button');
-    playBtn.className = 'copy-btn';
-    playBtn.type = 'button';
-    playBtn.textContent = '▶ Read "Aunt Agatha Makes a Bloomer"';
-    playBtn.onclick = () => {
-      unlockAudio();
-      if (JeevesReader.isPlaying) {
-        JeevesReader.pause();
-        playBtn.textContent = '▶ Resume Reading';
-      } else {
-        playBtn.textContent = '⏸ Pause Reading';
-        fetch('stories/agatha-bloomer.lit')
-          .then(res => {
-            if (!res.ok) throw new Error('File not found at stories/agatha-bloomer.lit');
-            return res.text();
-          })
-          .then(text => {
-            JeevesReader.load(text, 'agatha-bloomer');
-            JeevesReader.play().then(() => {
-              playBtn.textContent = '▶ Read "Aunt Agatha Makes a Bloomer"';
-            });
-          })
-          .catch(err => {
-            console.error('Reader error:', err);
-            alert('Could not load story: ' + err.message);
-            playBtn.textContent = '▶ Read "Aunt Agatha Makes a Bloomer"';
-          });
-      }
-    };
-
-    bubble.appendChild(playBtn);
-    row.appendChild(bubble);
-    if (chatEl) chatEl.appendChild(row);
-    scrollToBottom();
-  }
-
   // ---------- Init ----------
   replayHistory();
   updateComposerHint();
-  addReaderTestButton();
-  addSystemNote('Build: ' + JEEVES_BUILD);
   if (sessionStorage.getItem('jeeves_just_updated')) {
     sessionStorage.removeItem('jeeves_just_updated');
     addSystemNote('Application cache successfully purged and latest files loaded.');
