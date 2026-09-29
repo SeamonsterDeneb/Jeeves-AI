@@ -71,7 +71,7 @@
     convoType: 'general',
 
 
-    voiceProfiles: JSON.parse(localStorage.getItem(LS_KEY_VOICE_PROFILES) || '{"Jeeves":{"pitch":0,"browserPitch":1.0},"Bertie":{"pitch":2.0,"browserPitch":1.1},"Aunt Agatha":{"pitch":5.0,"browserPitch":1.35},"Bingo":{"pitch":1.5,"browserPitch":1.15},"Aline":{"pitch":4.0,"browserPitch":1.25},"Sidney":{"pitch":-2.0,"browserPitch":0.85}}'),
+    voiceProfiles: JSON.parse(localStorage.getItem(LS_KEY_VOICE_PROFILES) || '{"Jeeves":{"pitch":0,"rate":1.0,"browserPitch":1.0},"Bertie":{"pitch":2.0,"rate":1.0,"browserPitch":1.1},"Aunt Agatha":{"pitch":5.0,"rate":0.95,"browserPitch":1.35},"Bingo":{"pitch":1.5,"rate":1.05,"browserPitch":1.15},"Aline":{"pitch":4.0,"rate":1.0,"browserPitch":1.25},"Sidney":{"pitch":-2.0,"rate":0.95,"browserPitch":0.85}}'),
     readerProgress: JSON.parse(localStorage.getItem(LS_KEY_READER_PROGRESS) || '{}'),
     history: [],
     conversations: [],
@@ -133,8 +133,10 @@
       }
 
 
-            if (user) {
+      if (user) {
         pullCloudArchives();
+        pullCloudStories();
+        pullVoiceProfiles();
       }
     });
   }
@@ -175,6 +177,90 @@
       }
     } catch (err) {
       console.warn(`Cloud fetch difficulty, ${state.honorific}:`, err);
+    }
+  }
+
+  async function pushStoryToCloud(id, title, rawLit, isNew) {
+    if (!isAuthenticated || !window.db || !window.auth?.currentUser) return;
+    try {
+      const user = window.auth.currentUser;
+      const displayName = user.displayName || user.email || 'A family member';
+      const payload = {
+        title,
+        lit: rawLit,
+        characters: state.storyCharacters[id] || [],
+        updatedAt: Date.now(),
+        updatedBy: user.uid,
+        updatedByName: displayName
+      };
+      if (isNew) {
+        payload.addedBy = user.uid;
+        payload.addedByName = displayName;
+        payload.createdAt = Date.now();
+      }
+      await window.db.collection('stories').doc(id).set(payload, { merge: true });
+    } catch (err) {
+      console.warn(`Cloud story sync difficulty, ${state.honorific}:`, err);
+    }
+  }
+
+  async function pullCloudStories() {
+    if (!window.db || !window.auth?.currentUser) return;
+    try {
+      const snapshot = await window.db.collection('stories').get();
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const id = doc.id;
+        state.storyTextCache.set(id, data.lit);
+        if (data.characters) state.storyCharacters[id] = data.characters;
+        if (state.storyCatalogue.some(s => s.id === id)) {
+          state.storyOverrides[id] = data.lit;
+        } else {
+          const idx = state.customStories.findIndex(s => s.id === id);
+          const entry = { id, title: data.title, rawLit: data.lit, addedByName: data.addedByName };
+          if (idx >= 0) state.customStories[idx] = entry;
+          else state.customStories.push(entry);
+        }
+      });
+      try {
+        localStorage.setItem(LS_KEY_STORY_OVERRIDES, JSON.stringify(state.storyOverrides));
+        localStorage.setItem(LS_KEY_CUSTOM_STORIES, JSON.stringify(state.customStories));
+        localStorage.setItem(LS_KEY_STORY_CHARACTERS, JSON.stringify(state.storyCharacters));
+      } catch(e){}
+      if (archiveOverlay && archiveOverlay.classList.contains('open') && state.activeArchiveTab === 'library') {
+        renderLibrary();
+      }
+    } catch (err) {
+      console.warn(`Story library sync difficulty, ${state.honorific}:`, err);
+    }
+  }
+
+  async function pushVoiceProfilesToCloud() {
+    if (!isAuthenticated || !window.db || !window.auth?.currentUser) return;
+    try {
+      await window.db.collection('voiceProfiles').doc('shared').set({
+        profiles: state.voiceProfiles,
+        updatedAt: Date.now(),
+        updatedBy: window.auth.currentUser.uid
+      }, { merge: true });
+    } catch (err) {
+      console.warn(`Voice profile sync difficulty, ${state.honorific}:`, err);
+    }
+  }
+
+  async function pullVoiceProfiles() {
+    if (!window.db || !window.auth?.currentUser) return;
+    try {
+      const doc = await window.db.collection('voiceProfiles').doc('shared').get();
+      if (doc.exists) {
+        const data = doc.data();
+        if (data.profiles) {
+          state.voiceProfiles = { ...state.voiceProfiles, ...data.profiles };
+          try { localStorage.setItem(LS_KEY_VOICE_PROFILES, JSON.stringify(state.voiceProfiles)); } catch(e){}
+        }
+      }
+    } catch (err) {
+      console.warn(`Voice profile fetch difficulty, ${state.honorific}:`, err);
     }
   }
 
@@ -1035,12 +1121,12 @@
     return cleanText;
   }
 
-  async function fetchTtsBlobUrl(cleanText, pitch = 0) {
+  async function fetchTtsBlobUrl(cleanText, pitch = 0, rate = 1.0) {
     try {
       const resp = await fetch('https://us-central1-jeeves-login-6391e.cloudfunctions.net/synthesizeSpeech', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: cleanText, rate: state.ttsRate, speakingRate: state.ttsRate, pitch: pitch, userId: window.auth?.currentUser?.uid })
+        body: JSON.stringify({ text: cleanText, pitch: pitch, rate: rate, userId: window.auth?.currentUser?.uid })
       });
       return resp.ok ? URL.createObjectURL(await resp.blob()) : null;
     } catch (e) { return null; }
@@ -1559,8 +1645,9 @@
 
     getProfile(speaker) {
       if (!state.voiceProfiles[speaker]) {
-        state.voiceProfiles[speaker] = { pitch: 0, browserPitch: 1.0 };
+        state.voiceProfiles[speaker] = { pitch: 0, rate: 1.0, browserPitch: 1.0 };
         try { localStorage.setItem(LS_KEY_VOICE_PROFILES, JSON.stringify(state.voiceProfiles)); } catch(e){}
+        pushVoiceProfilesToCloud();
       }
       return state.voiceProfiles[speaker];
     },
@@ -1593,20 +1680,22 @@
             const ahead = this.parseLine(this.lines[aheadIdx]);
             const aheadClean = sanitizeForSpeech(ahead.text);
             const aheadProf = this.getProfile(ahead.speaker);
-            if (aheadClean && !audioPrefetchCache.has(aheadClean)) {
-              audioPrefetchCache.set(aheadClean, fetchTtsBlobUrl(aheadClean, aheadProf.pitch));
+            const aheadKey = aheadClean ? `${aheadClean}__p${aheadProf.pitch}_r${aheadProf.rate || 1}` : '';
+            if (aheadKey && !audioPrefetchCache.has(aheadKey)) {
+              audioPrefetchCache.set(aheadKey, fetchTtsBlobUrl(aheadClean, aheadProf.pitch, aheadProf.rate || 1));
             }
           }
         }
 
+        const cleanKey = clean ? `${clean}__p${profile.pitch}_r${profile.rate || 1}` : '';
         if (clean) {
           let playedCloud = false;
           if (getTtsQuota() < 980000) {
             try {
-              const audioUrl = audioPrefetchCache.has(clean)
-                ? await audioPrefetchCache.get(clean)
-                : await fetchTtsBlobUrl(clean, profile.pitch);
-              audioPrefetchCache.delete(clean);
+              const audioUrl = audioPrefetchCache.has(cleanKey)
+                ? await audioPrefetchCache.get(cleanKey)
+                : await fetchTtsBlobUrl(clean, profile.pitch, profile.rate || 1);
+              audioPrefetchCache.delete(cleanKey);
               if (audioUrl) {
                 await new Promise(resolve => {
                   ttsAudio.src = audioUrl;
@@ -1627,7 +1716,7 @@
               const u = new SpeechSynthesisUtterance(clean);
               const voice = getJeevesVoice();
               if (voice) u.voice = voice;
-              u.rate = state.ttsRate || 1.0;
+              u.rate = (state.ttsRate || 1.0) * (profile.rate || 1.0);
               u.pitch = profile.browserPitch || 1.0;
               u.onend = resolve;
               u.onerror = resolve;
@@ -2167,12 +2256,17 @@
       }
 
       tabNav.querySelectorAll('.archive-tab-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', async (e) => {
           state.activeArchiveTab = e.currentTarget.dataset.tab;
           tabNav.querySelectorAll('.archive-tab-btn').forEach(b => {
             b.classList.toggle('active', b.dataset.tab === state.activeArchiveTab);
           });
-          state.activeArchiveTab === 'library' ? renderLibrary() : renderArchives();
+          if (state.activeArchiveTab === 'library') {
+            if (isAuthenticated) await pullCloudStories();
+            renderLibrary();
+          } else {
+            renderArchives();
+          }
         });
       });
     } else if (tabNav) {
@@ -2416,8 +2510,9 @@ ${numbered}`;
       if (!name || speakers.some(s => s.toLowerCase() === name.toLowerCase())) return null;
       speakers.push(name);
       if (!state.voiceProfiles[name]) {
-        state.voiceProfiles[name] = { pitch: 0, browserPitch: 1.0 };
+        state.voiceProfiles[name] = { pitch: 0, rate: 1.0, browserPitch: 1.0 };
         localStorage.setItem(LS_KEY_VOICE_PROFILES, JSON.stringify(state.voiceProfiles));
+        pushVoiceProfilesToCloud();
       }
       container.querySelectorAll('select').forEach(sel => {
         const opt = document.createElement('option');
@@ -2601,6 +2696,7 @@ ${numbered}`;
 
           state.customStories.push(storyObj);
           localStorage.setItem(LS_KEY_CUSTOM_STORIES, JSON.stringify(state.customStories));
+          pushStoryToCloud(storyObj.id, storyObj.title, storyObj.rawLit, true);
           modal.classList.remove('open');
           modal.querySelector('#story-title-input').value = '';
           modal.querySelector('#story-text-input').value = '';
@@ -2710,6 +2806,7 @@ ${numbered}`;
           state.storyCharacters[story.id] = speakers;
           localStorage.setItem(LS_KEY_STORY_CHARACTERS, JSON.stringify(state.storyCharacters));
           state.storyTextCache.set(story.id, finalLit);
+          pushStoryToCloud(story.id, story.title, finalLit, false);
           renderLibrary();
         }, state.storyCharacters[story.id]);
       });
