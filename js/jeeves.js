@@ -28,6 +28,7 @@
   // ---------- Config / storage ----------
 
   const LS_KEY_API = 'jeeves_api_key';
+  const LS_KEY_PERSONA = 'jeeves_persona';
   const LS_KEY_HONORIFIC = 'jeeves_honorific';
   const LS_KEY_THEME = 'jeeves_theme';
   const LS_KEY_MODEL = 'jeeves_model';
@@ -65,6 +66,7 @@
 
     let state = {
     apiKey: localStorage.getItem(LS_KEY_API) || '',
+    persona: localStorage.getItem(LS_KEY_PERSONA) || 'reggie',
     honorific: localStorage.getItem(LS_KEY_HONORIFIC) || 'Sir',
     theme: localStorage.getItem(LS_KEY_THEME) || 'light',
     model: localStorage.getItem(LS_KEY_MODEL) || '',
@@ -120,7 +122,7 @@
   }
 
   if (typeof firebase !== 'undefined') {
-    window.auth.onAuthStateChanged((user) => {
+    window.auth.onAuthStateChanged(async (user) => {
       currentUser = user;
       isAuthenticated = !!user;
       const authBtn = document.getElementById('auth-btn');
@@ -134,22 +136,53 @@
 
 
       if (user) {
-        (async () => {
+        if (user.email === 'pulsipherd@gmail.com') {
+          listenForSuggestions();
+        }
           await Promise.all([
+            pullUserSettings(),
             pullCloudArchives(),
             pullCloudStories(),
             pullVoiceProfiles()
           ]);
           if (archiveOverlay && archiveOverlay.classList.contains('open')) {
-            if (state.activeArchiveTab === 'library') {
-              renderLibrary();
-            } else {
-              renderArchives();
-            }
+          if (state.activeArchiveTab === 'library') {
+            renderLibrary();
+          } else {
+            renderArchives();
           }
-        })();
+        }
       }
     });
+  }
+
+  async function pushUserSettingsToCloud() {
+    if (!isAuthenticated || !window.db || !window.auth?.currentUser) return;
+    try {
+      await window.db.collection('users').doc(window.auth.currentUser.uid).collection('settings').doc('credentials').set({
+        apiKey: state.apiKey,
+        updatedAt: Date.now()
+      }, { merge: true });
+    } catch (err) {
+      console.warn(`User settings sync difficulty, ${state.honorific}:`, err);
+    }
+  }
+
+  async function pullUserSettings() {
+    if (!window.db || !window.auth?.currentUser) return;
+    try {
+      const doc = await window.db.collection('users').doc(window.auth.currentUser.uid).collection('settings').doc('credentials').get();
+      if (doc.exists) {
+        const data = doc.data();
+        if (data.apiKey) {
+          state.apiKey = data.apiKey;
+          localStorage.setItem(LS_KEY_API, state.apiKey);
+          if (apiKeyInput) apiKeyInput.value = state.apiKey;
+        }
+      }
+    } catch (err) {
+      console.warn(`User settings fetch difficulty, ${state.honorific}:`, err);
+    }
   }
 
   async function pullCloudArchives() {
@@ -1039,13 +1072,20 @@
 
   function getJeevesVoice() {
     const voices = speechSynthesis.getVoices();
-    // Prioritize high-quality Google neural voices often found in Chrome/Android
+    const isRegina = state.persona === 'regina';
+    if (isRegina) {
+      const femalePreferred = voices.find(v => v.name.includes('Google UK English Female')) ||
+                              voices.find(v => v.lang.startsWith('en-GB') && /female|woman|alice|fiona|hazel|victoria|kate/i.test(v.name)) ||
+                              voices.find(v => v.lang.startsWith('en-GB'));
+      return femalePreferred || voices[0];
+    }
     const preferred = voices.find(v => v.name.includes('Google UK English Male')) ||
                       voices.find(v => v.name.includes('Google UK English Female')) ||
                       voices.find(v => v.lang.startsWith('en-GB') && v.name.includes('Google')) ||
                       voices.find(v => v.lang.startsWith('en-GB'));
     return preferred || voices[0];
   }
+
   
   function prepareSpeechText(text) {
     if (!text) return '';
@@ -1120,7 +1160,7 @@
     cleanText = cleanText.replace(/&mdash;|—/g, '. ');
     cleanText = cleanText.replace(/&[a-z0-9#]+;/gi, ' ');
     // Action button links (Maps, Calendar, Email, SMS, Tel): speak only the button label
-    cleanText = cleanText.replace(/\[([^\]]+)\]\((?:https?:\/\/(?:[a-z0-9-]+\.)*(?:calendar\.google\.com\vert{}google\.com\/maps\vert{}maps\.google\.com\vert{}maps\.apple\.com\vert{}goo\.gl\/maps\vert{}maps\.app\.goo\.gl\vert{}waze\.com)\vert{}mailto:\vert{}sms:\vert{}tel:\vert{}geo:)[^)]*\)/gi, '$1. ');
+    cleanText = cleanText.replace(/\[([^\]]+)\]\((?:https?:\/\/(?:[a-z0-9-]+\.)*(?:calendar\.google\.com|google\.com\/maps|maps\.google\.com|maps\.apple\.com|goo\.gl\/maps|maps\.app\.goo\.gl|waze\.com)|mailto:|sms:|tel:|geo:)[^)]*\)/gi, '$1. ');
 
     // Standard markdown links: speak label + ", link.", or just "link" if the label is a URL
     cleanText = cleanText.replace(/\[([^\]]+)\]\([^)]+\)/g, (match, label) => {
@@ -1140,11 +1180,19 @@
       const resp = await fetch('https://us-central1-jeeves-login-6391e.cloudfunctions.net/synthesizeSpeech', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: cleanText, pitch: pitch, rate: rate, userId: window.auth?.currentUser?.uid })
+        body: JSON.stringify({
+          text: cleanText,
+          pitch: pitch,
+          rate: rate,
+          persona: state.persona,
+          gender: state.persona === 'regina' ? 'FEMALE' : 'MALE',
+          userId: window.auth?.currentUser?.uid
+        })
       });
       return resp.ok ? URL.createObjectURL(await resp.blob()) : null;
     } catch (e) { return null; }
   }
+
 
   function prefetchTts(rawText) {
     if (!rawText || audioPrefetchCache.has(rawText)) return;
@@ -1277,11 +1325,15 @@
   }
 
   // ---------- Persona ----------
-    function buildSystemInstruction(){
+  function buildSystemInstruction(){
     const h = (state.honorific || 'Sir').trim() || 'Sir';
+    const isRegina = state.persona === 'regina';
+    const name = isRegina ? 'Regina Jeeves' : 'Reginald Jeeves';
+    const role = isRegina
+      ? "an impeccably erudite and unflappable lady-in-waiting in the tradition of P.G. Wodehouse"
+      : "an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse";
     let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Always use Google Search to ground factual claims in authoritative sources. Every factual claim in your response MUST be followed immediately by an inline numeric citation marker in bare brackets (e.g. 'Northern flying squirrels are strictly nocturnal [1, 2].'). At the end of every response containing factual claims, provide a '### References' section formatted as a numbered list matching the inline markers (e.g. According to [Source Name], [brief domain credibility note], [key finding as link text](URL)). Never list a reference at the bottom that is not cited inline in the body text, and never place raw URLs in inline prose. Whenever you quote from great literature, historical figures, or book characters, incorporate the author's name (and the character's name if applicable) into the prose leading up to the quote, and format only the quote itself as a Google search link wrapped in double quotation marks (e.g. In the words of J.R.R. Tolkien's character, Sam Gamgee, ["There's some good in this world, Mr. Frodo, and it's worth fighting for."](https://www.google.com/search?q=%22There%27s%20some%20good%20in%20this%20world%22%20Tolkien%20quote)). Do not append an em-dash or author attribution after the quote.
-
-        - Mobile Action Links: When scheduling, navigating, or composing drafts, proactively provide markdown links with actionable intents (e.g. [Add to Calendar](https://calendar.google.com/calendar/render?action=TEMPLATE&text=...), [Directions](https://www.google.com/maps/dir/?api=1&destination=...), [Send Email](mailto:...?subject=...&body=...), [Send SMS](sms:?body=...)).`;
+      - Mobile Action Links: When scheduling, navigating, or composing drafts, proactively provide markdown links with actionable intents (e.g. [Add to Calendar](https://calendar.google.com/calendar/render?action=TEMPLATE&text=...), [Directions](https://www.google.com/maps/dir/?api=1&destination=...), [Send Email](mailto:...?subject=...&body=...), [Send SMS](sms:?body=...)).`;
     if (state.convoType === 'coding') {
       instructions += `\n- You are in 'Coding Help' mode. ALWAYS use small, highly targeted replacements. Favor a micro-replacement strategy over replacing large blocks. Ensure all code blocks, commands, or file paths remain clean and syntactically precise. You must use this pattern for modifications:
       Paste this:
@@ -1326,9 +1378,25 @@
     const currentThemeRadio = document.querySelector(`input[name="theme"][value="${state.theme}"]`);
     if (currentThemeRadio) currentThemeRadio.checked = true;
 
+    const currentPersonaRadio = document.querySelector(`input[name="persona"][value="${state.persona}"]`);
+    if (currentPersonaRadio) currentPersonaRadio.checked = true;
+
     if (statusArea) statusArea.innerHTML = '';
     if (hiddenModelsNote) hiddenModelsNote.style.display = 'none';
     if (modalOverlay) modalOverlay.classList.add('open');
+
+    const isOwner = currentUser && currentUser.email === 'pulsipherd@gmail.com';
+    const adminView = document.getElementById('suggestion-user-view');
+    const guestView = document.getElementById('suggestion-guest-view');
+    if (adminView && guestView) {
+      adminView.style.display = isOwner ? 'block' : 'none';
+      guestView.style.display = isOwner ? 'none' : 'block';
+    }
+
+    const submitSuggBtn = document.getElementById('submit-suggestion-btn');
+    if (submitSuggBtn) {
+      submitSuggBtn.onclick = submitUserSuggestion;
+    }
 
     if (state.apiKey) {
       fetchModels(state.apiKey, state.model);
@@ -1525,6 +1593,8 @@
   function saveSettings(){
     const newKey = apiKeyInput.value.trim();
     const newHonorific = honorificInput.value.trim() || 'Sir';
+    const selectedPersonaRadio = document.querySelector('input[name="persona"]:checked');
+    const newPersona = selectedPersonaRadio ? selectedPersonaRadio.value : 'reggie';
     const selectedThemeRadio = document.querySelector('input[name="theme"]:checked');
     const newTheme = selectedThemeRadio ? selectedThemeRadio.value : 'light';
     const newModel = modelSelect.value || '';
@@ -1540,6 +1610,7 @@
     }
 
     state.apiKey = newKey;
+    state.persona = newPersona;
     state.honorific = newHonorific;
     state.theme = newTheme;
     state.model = newModel;
@@ -1560,10 +1631,13 @@
     };
 
     localStorage.setItem(LS_KEY_API, state.apiKey);
+    localStorage.setItem(LS_KEY_PERSONA, state.persona);
     localStorage.setItem(LS_KEY_HONORIFIC, state.honorific);
     localStorage.setItem(LS_KEY_THEME, state.theme);
     localStorage.setItem(LS_KEY_MODEL, state.model);
     localStorage.setItem(LS_KEY_MODEL_OVERRIDES, JSON.stringify(state.modelOverrides));
+
+    pushUserSettingsToCloud();
 
     closeModal();
     replayHistory();
@@ -1648,6 +1722,7 @@
     lines: [],
     currentIndex: 0,
     isPlaying: false,
+    _playToken: 0,
 
     parseLine(raw) {
       const match = raw.match(/^\s*\[([^\]]+)\]\s*(.*)$/);
@@ -1681,6 +1756,7 @@
     async play() {
       if (!this.lines.length || this.currentIndex >= this.lines.length) return;
       this.isPlaying = true;
+      const myToken = ++this._playToken;
 
       while (this.isPlaying && this.currentIndex < this.lines.length) {
         const current = this.parseLine(this.lines[this.currentIndex]);
@@ -1712,12 +1788,14 @@
               audioPrefetchCache.delete(cleanKey);
               if (audioUrl) {
                 await new Promise(resolve => {
+                  this._resolveCurrent = resolve;
                   ttsAudio.src = audioUrl;
                   ttsAudio.playbackRate = state.ttsRate || 1.0;
                   ttsAudio.onended = resolve;
                   ttsAudio.onerror = resolve;
                   ttsAudio.play().catch(resolve);
                 });
+                this._resolveCurrent = null;
                 playedCloud = true;
               }
             } catch (err) {
@@ -1727,50 +1805,262 @@
 
           if (!playedCloud && 'speechSynthesis' in window) {
             await new Promise(resolve => {
+              this._resolveCurrent = resolve;
               const u = new SpeechSynthesisUtterance(clean);
               const voice = getJeevesVoice();
               if (voice) u.voice = voice;
               u.rate = (state.ttsRate || 1.0) * (profile.rate || 1.0);
               u.pitch = profile.browserPitch || 1.0;
-              u.onend = resolve;
-              u.onerror = resolve;
+              u.onend = () => resolve();
+              u.onerror = () => resolve();
               speechSynthesis.speak(u);
             });
+            this._resolveCurrent = null;
           }
         }
 
+        if (myToken !== this._playToken) return; // superseded by a pause/seek elsewhere
+
         this.currentIndex++;
         this.saveProgress();
+        updateReaderBar();
       }
-      this.isPlaying = false;
+      if (myToken === this._playToken) this.isPlaying = false;
     },
 
     pause() {
+      this._playToken++;
       this.isPlaying = false;
+      if (this._resolveCurrent) { const r = this._resolveCurrent; this._resolveCurrent = null; r(); }
       ttsAudio.pause();
       if ('speechSynthesis' in window) speechSynthesis.cancel();
       this.saveProgress();
+      updateReaderBar();
+    },
+
+    seekTo(index) {
+      const wasPlaying = this.isPlaying;
+      this.pause();
+      this.currentIndex = Math.max(0, Math.min(index, this.lines.length - 1));
+      this.saveProgress();
+      updateReaderBar();
+      if (wasPlaying) this.play();
+    },
+
+    back(n = 1) {
+      this.seekTo(this.currentIndex - n);
     }
   };
   window.JeevesReader = JeevesReader;
 
-  async function syncConvoToCloud(convo) {
-    if (!isAuthenticated || !window.db || !window.auth?.currentUser || !convo) return;
-    try {
-      await window.db
-        .collection('users')
-        .doc(window.auth.currentUser.uid)
-        .collection('conversations')
-        .doc(convo.id)
-        .set({
-          title: convo.title || 'Main Conversation',
-          history: convo.history || [],
-          updatedAt: convo.updatedAt || Date.now()
-        }, { merge: true });
-    } catch (e) {
-      console.error(`Cloud sync failed, ${state.honorific}:`, e);
+
+function buildReaderBar(container) {
+  const bar = document.createElement('div');
+  bar.className = 'reader-bar';
+  bar.innerHTML = `
+    <span class="reader-title reader-bar-title"></span>
+    <button class="reader-back-btn reader-bar-btn" title="Back a line" type="button">⟲</button>
+    <button class="reader-playpause-btn reader-bar-btn" title="Play/Pause" type="button">▶</button>
+    <input type="range" class="reader-slider" min="0" max="0" value="0" step="1">
+    <span class="reader-position reader-bar-label"></span>
+    <button class="reader-close-btn reader-bar-btn" title="Close" type="button">✕</button>
+  `;
+  (container || document.body).appendChild(bar);
+
+  bar.querySelector('.reader-back-btn').addEventListener('click', () => {
+    JeevesReader.back(1);
+  });
+
+  bar.querySelector('.reader-playpause-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (JeevesReader.isPlaying) {
+      JeevesReader.pause();
+    } else if (JeevesReader.lines.length) {
+      unlockAudio();
+      JeevesReader.play().then(updateReaderBar);
+      updateReaderBar();
     }
+  });
+
+  const slider = bar.querySelector('.reader-slider');
+  slider.addEventListener('input', () => {
+    slider.dataset.dragging = '1';
+    const val = parseInt(slider.value, 10);
+    document.querySelectorAll('.reader-bar').forEach(b => {
+      const label = b.querySelector('.reader-position');
+      if (label) label.textContent = `${val + 1} / ${JeevesReader.lines.length}`;
+      const s = b.querySelector('.reader-slider');
+      if (s && s !== slider) s.value = val;
+    });
+  });
+  slider.addEventListener('change', () => {
+    delete slider.dataset.dragging;
+    JeevesReader.seekTo(parseInt(slider.value, 10));
+  });
+
+  bar.querySelector('.reader-close-btn').addEventListener('click', () => {
+    JeevesReader.pause();
+    hideReaderBar();
+  });
+
+  return bar;
+}
+
+function showReaderBar(title) {
+  const mountPoints = [
+    document.getElementById('composer') || document.body,
+    document.querySelector('#jeeves-library-modal .library-player-slot') || document.getElementById('jeeves-library-modal')
+  ].filter(Boolean);
+
+  mountPoints.forEach(container => {
+    let bar = container.querySelector(':scope > .reader-bar');
+    if (!bar) {
+      bar = buildReaderBar(container);
+    }
+    bar.style.display = 'flex';
+    const titleEl = bar.querySelector('.reader-title');
+    if (titleEl) titleEl.textContent = title;
+  });
+
+  updateReaderBar();
+}
+
+function hideReaderBar() {
+  document.querySelectorAll('.reader-bar').forEach(bar => {
+    bar.style.display = 'none';
+  });
+}
+
+function updateReaderBar() {
+  const bars = document.querySelectorAll('.reader-bar');
+  if (!bars.length) return;
+
+  const total = JeevesReader.lines.length;
+  const idx = Math.min(JeevesReader.currentIndex, Math.max(total - 1, 0));
+
+  bars.forEach(bar => {
+    if (bar.style.display === 'none') return;
+
+    const slider = bar.querySelector('.reader-slider');
+    if (slider && !slider.dataset.dragging) {
+      slider.max = Math.max(total - 1, 0);
+      slider.value = idx;
+    }
+    const label = bar.querySelector('.reader-position');
+    if (label) label.textContent = `${Math.min(idx + 1, total)} / ${total}`;
+
+    const ppBtn = bar.querySelector('.reader-playpause-btn');
+    if (ppBtn) ppBtn.textContent = JeevesReader.isPlaying ? '⏸' : '▶';
+  });
+}
+
+let unsubscribeSuggestions = null;
+
+function listenForSuggestions() {
+  if (!window.db || !window.auth?.currentUser || window.auth.currentUser.email !== 'pulsipherd@gmail.com') return;
+  if (unsubscribeSuggestions) unsubscribeSuggestions();
+  
+  unsubscribeSuggestions = window.db.collection('suggestions')
+    .orderBy('createdAt', 'desc')
+    .onSnapshot(snapshot => {
+      const suggestions = [];
+      snapshot.forEach(doc => suggestions.push({ id: doc.id, ...doc.data() }));
+      const unresolved = suggestions.filter(s => !s.resolved);
+      
+      const flag = document.getElementById('settings-flag');
+      if (flag) {
+        flag.style.display = unresolved.length > 0 ? 'inline-block' : 'none';
+      }
+
+      const bannerContainer = document.getElementById('suggestion-banner-container');
+      const suggestionLink = document.getElementById('suggestion-link-trigger');
+      if (bannerContainer && suggestionLink) {
+        if (unresolved.length > 0) {
+          const honorific = state.honorific || 'Sir';
+          suggestionLink.textContent = `Would you like to implement one of the feature suggestions, ${honorific}?`;
+          bannerContainer.style.display = 'inline-block';
+          suggestionLink.onclick = (e) => {
+            e.preventDefault();
+            openModal();
+            setTimeout(() => {
+              const stepV = document.getElementById('settings-step-v');
+              if (stepV) {
+                stepV.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                stepV.style.transition = 'background-color 0.5s';
+                stepV.style.backgroundColor = 'rgba(139, 0, 0, 0.08)';
+                setTimeout(() => { stepV.style.backgroundColor = ''; }, 1500);
+              }
+            }, 100);
+          };
+        } else {
+          bannerContainer.style.display = 'none';
+        }
+      }
+      
+      const listEl = document.getElementById('admin-suggestions-list');
+      if (listEl) {
+        if (suggestions.length === 0) {
+          listEl.innerHTML = '<p style="font-size:12px; color:var(--mist); text-align:center; margin:8px 0;">No suggestions received yet.</p>';
+          return;
+        }
+        listEl.innerHTML = suggestions.map(s => `
+          <div style="padding:6px 8px; border-bottom:1px solid var(--hairline); display:flex; justify-content:space-between; align-items:center; font-size:12px;">
+            <div>
+              <strong>${escapeHtml(s.authorName || 'Anonymous')}</strong>: ${escapeHtml(s.text)}
+              <div style="font-size:10px; color:var(--mist);">${new Date(s.createdAt).toLocaleString()}</div>
+            </div>
+            <button type="button" onclick="toggleSuggestionResolved('${s.id}', ${!s.resolved})" style="font-size:11px; padding:2px 6px;">${s.resolved ? 'Reopen' : 'Resolve'}</button>
+          </div>
+        `).join('');
+      }
+    }, err => console.warn('Suggestions listener error:', err));
+}
+
+window.toggleSuggestionResolved = async function(id, resolved) {
+  if (!window.db) return;
+  try {
+    await window.db.collection('suggestions').doc(id).update({ resolved });
+  } catch(e) { console.error('Failed to update suggestion:', e); }
+};
+
+async function submitUserSuggestion() {
+  const input = document.getElementById('suggestion-input');
+  if (!input || !input.value.trim()) return;
+  const text = input.value.trim();
+  input.value = '';
+  
+  try {
+    await window.db.collection('suggestions').add({
+      text,
+      authorEmail: currentUser ? currentUser.email : 'guest',
+      authorName: currentUser ? (currentUser.displayName || currentUser.email) : 'Visitor',
+      createdAt: Date.now(),
+      resolved: false
+    });
+    alert('Thank you! Your suggestion has been recorded.');
+  } catch(e) {
+      console.error('Detailed suggestion submission error:', e);
+      alert('Unable to submit suggestion at this moment: ' + (e.message || e));
   }
+}
+
+async function syncConvoToCloud(convo) {
+  if (!isAuthenticated || !window.db || !window.auth?.currentUser || !convo) return;
+  try {
+    await window.db
+      .collection('users')
+      .doc(window.auth.currentUser.uid)
+      .collection('conversations')
+      .doc(convo.id)
+      .set({
+        title: convo.title || 'Main Conversation',
+        history: convo.history || [],
+        updatedAt: convo.updatedAt || Date.now()
+      }, { merge: true });
+  } catch (e) {
+    console.error(`Cloud sync failed, ${state.honorific}:`, e);
+  }
+}
 
   function persistHistory(){
     const idx = state.conversations.findIndex(c => c.id === state.activeId);
@@ -2217,7 +2507,7 @@
       }
     };
 
-        const TRIGGER_REGEX = /\b(?:what do you think|your thoughts|over to you|take it away|if you please|thank you),?\s*(?:jeeves|chiefs?|geeves|jeevs|jeans|teams)s?[\s.,!?]*$/i;
+        const TRIGGER_REGEX = /\b(?:what do you think|your thoughts|over to you|take it away|if you please|thank you),?\s*(?:jeeves|chiefs?|geeves|jeevs|jeans|teams|Jesus|sheaves)s?[\s.,!?]*$/i;
 
     recognition.onresult = (event) => {
       liveInterim = '';
@@ -2993,6 +3283,7 @@ ${numbered}`;
             return;
           }
           JeevesReader.load(text, story.id);
+          showReaderBar(story.title);
           const playPromise = JeevesReader.play();
           renderLibrary();
           await playPromise;
@@ -3034,6 +3325,7 @@ ${numbered}`;
         state.storyTextCache.delete(story.id);
         if (JeevesReader.storyId === story.id) {
           JeevesReader.pause();
+          hideReaderBar();
         }
         renderLibrary();
       });

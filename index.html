@@ -29,6 +29,7 @@
 
     <button class="icon-btn" id="settings-btn" title="Settings" aria-label="Open settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span id="settings-flag" class="settings-flag" style="display:none; color:darkred" title="Unresolved suggestion waiting">⚑</span>
     </button>
   </header>
 
@@ -58,6 +59,9 @@
     </div>
     <div class="composer-label-row">
       <label for="input">Instructions</label>
+      <span id="suggestion-banner-container" style="font-size: 13px; font-weight: normal; display: none;">
+        <a href="#" id="suggestion-link-trigger" style="color: darkred; text-decoration: underline; cursor: pointer;"></a>
+      </span>
       <span id="jeeves-thinking" class="thinking-ticker" aria-live="polite"></span>
     </div>
 
@@ -110,20 +114,19 @@
         </button>
       </div>
       <div class="modal-body">
-        <div id="status-area"></div>
-
+        
         <!-- SECTION I: Credentials & Access -->
         <section class="settings-section">
           <div class="section-header">
             <span class="section-numeral">I</span>
             <h3 class="section-title">Credentials & Access</h3>
           </div>
-
+          
           <div class="auth-banner">
             <button id="auth-btn" type="button">Sign In with Google</button>
             <span id="auth-user-status" style="font-size: 12px; opacity: 0.8; font-style: italic;"></span>
           </div>
-
+          
           <div class="field" style="margin-bottom:0;">
             <label for="api-key">Google Gemini API Key</label>
             <div class="key-row">
@@ -134,7 +137,8 @@
             <p class="field-help" style="margin-top:6px;"><strong>Note for Cloud Speech:</strong> Ensure the <a href="https://console.cloud.google.com/apis/library/texttospeech.googleapis.com" target="_blank" rel="noopener">Cloud Text-to-Speech API</a> is enabled on the same Google Cloud project, and that any key restrictions allow it. This does require a billing account, but Jeeves' voice will switch over to the standard (usually tinny) local voice on your device before you hit that limit, if you ever get to that point, so you'll never be charged for Jeeves to talk to you.</p>
           </div>
         </section>
-
+        
+        <div id="status-area"></div>
         <!-- SECTION II: Model Selection & Mode Overrides -->
         <section class="settings-section">
           <div class="section-header">
@@ -187,7 +191,17 @@
           </div>
 
           <div class="field">
+            <label>Persona & Voice</label>
+            <div class="theme-radio-group">
+              <label><input type="radio" name="persona" value="reggie" checked> Reginald</label>
+              <label><input type="radio" name="persona" value="regina"> Regina</label>
+            </div>
+            <p class="field-help">Select whether Jeeves attends you as Reginald or Regina.</p>
+          </div>
+
+          <div class="field">
             <label for="honorific">Preferred Honorific</label>
+
             <input type="text" id="honorific" placeholder="Sir">
             <p class="field-help">How Jeeves ought to address you — e.g. "Sir", "Madam", "Master Wooster".</p>
           </div>
@@ -238,12 +252,24 @@
             <p class="field-help" id="session-total-note"></p>
           </div>
         </section>
+        <!-- Step V: Suggestions -->
+        <section class="settings-section" id="settings-step-v">
+          <h3>Step V: Suggestions &amp; Improvements</h3>
+          <div id="suggestion-user-view" style="display:none;">
+            <p style="font-size:13px; color:var(--mist); margin-bottom:8px;">Unresolved suggestions submitted by family or visitors:</p>
+            <div id="admin-suggestions-list" style="max-height:200px; overflow-y:auto; margin-bottom:10px; border:1px solid var(--hairline); border-radius:6px; padding:8px;"></div>
+          </div>
+          <div id="suggestion-guest-view">
+            <p style="font-size:13px; color:var(--mist); margin-bottom:8px;">Have an idea to improve Jeeves? Leave a suggestion below:</p>
+            <textarea id="suggestion-input" placeholder="Type your suggestion here..." style="width:100%; height:70px; padding:8px; border-radius:6px; border:1px solid var(--hairline); background:var(--ink-panel-2); color:var(--ink); font-family:var(--font-ui); resize:vertical; margin-bottom:8px;"></textarea>
+            <button type="button" id="submit-suggestion-btn" style="padding:6px 14px; font-size:13px;">Submit Suggestion</button>
+          </div>
+        </section>
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" id="refresh-app-btn" type="button" title="Purge cached files and reload the latest version">Update application</button>
         <button class="btn-primary" id="save-settings-btn">Save</button>
       </div>
-
     </div>
   </div>
   <script>

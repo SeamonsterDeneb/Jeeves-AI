@@ -47,7 +47,7 @@ exports.synthesizeSpeech = functions.https.onRequest(async (req, res) => {
     return res.status(204).send('');
   }
   
-  const { text, userId, pitch, rate } = req.body;
+  const { text, userId, pitch, rate, persona } = req.body;
   if (!userId) return res.status(403).send('Unauthorized');
 
   const userRef = admin.firestore().collection('users').doc(userId).collection('usage').doc('tts');
@@ -56,10 +56,9 @@ exports.synthesizeSpeech = functions.https.onRequest(async (req, res) => {
 
   if (data.count >= 1000000) return res.status(429).send('Quota exceeded');
 
-  // Jeeves' own voice sits at pitch -4 / rate 0.92. Each character's "pitch" and "rate"
-  // (from the client's voice profiles) are applied as an offset/multiplier on top of that,
-  // so every character is still recognizably read *by* Jeeves, just inflected differently.
-  const BASE_PITCH = -4;
+  const isRegina = persona === 'regina';
+  const voiceName = isRegina ? 'en-GB-Standard-A' : 'en-GB-Standard-B';
+  const BASE_PITCH = isRegina ? -4 : -4;
   const BASE_RATE = 0.92;
   const pitchOffset = typeof pitch === 'number' && isFinite(pitch) ? pitch : 0;
   const rateMultiplier = typeof rate === 'number' && isFinite(rate) && rate > 0 ? rate : 1.0;
@@ -68,9 +67,10 @@ exports.synthesizeSpeech = functions.https.onRequest(async (req, res) => {
 
   const request = {
     input: { text: formatTextForTTS(text) },
-    voice: { languageCode: 'en-GB', name: 'en-GB-Standard-B' },
+    voice: { languageCode: 'en-GB', name: voiceName },
     audioConfig: { audioEncoding: 'MP3', pitch: finalPitch, speakingRate: finalRate },
   };
+
 
   const [response] = await client.synthesizeSpeech(request);
   

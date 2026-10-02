@@ -807,6 +807,76 @@ header.letterhead{
     transform: translateY(-2px);
     border-color: var(--brass-bright);
   }
+
+  .reader-bar{
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 100;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--ink-panel);
+    border-top: 1px solid var(--hairline);
+    box-shadow: 0 -6px 16px rgba(0,0,0,0.3);
+  }
+  .reader-bar-title{
+    flex: 0 0 auto;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-display);
+    color: var(--parchment);
+    font-size: 13px;
+  }
+  .reader-bar-btn{
+    flex: 0 0 auto;
+    background: transparent;
+    border: 1px solid var(--hairline);
+    color: var(--brass-bright);
+    border-radius: 6px;
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .reader-bar-btn:hover{ border-color: var(--brass); }
+  .reader-bar #reader-slider{ flex: 1; }
+  .reader-bar-label{
+    flex: 0 0 auto;
+    font-size: 11px;
+    color: var(--parchment-dim);
+    min-width: 44px;
+    text-align: right;
+  }
+  @media (max-width: 480px){
+    .reader-bar-title{ display: none; }
+  }
+
+  /* Ensure the persistent floating control overlay sits above both Chat and Library views */
+.floating-controls {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 100; /* Keeps controls above #archive-overlay (z-index: 90) and .reader-bar (z-index: 40) */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--ink-panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/* Optional state management if controls should hide conditionally */
+.floating-controls.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(10px);
+}
    .archive-panel-toolbar input[type="text"] {
     flex: 0 1 280px;
     background: var(--ink-panel-2);
@@ -1019,6 +1089,15 @@ header.letterhead{
   }
 
   /* Settings Section Cards & Headers */
+  .status-msg {
+  height: 4.5em; 
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
   .settings-section {
     background: var(--ink-panel-2);
     border: 1px solid var(--hairline);
