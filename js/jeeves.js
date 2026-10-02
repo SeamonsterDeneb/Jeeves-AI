@@ -358,6 +358,9 @@
   }
 
   async function generateTitle(history) {
+    // Include library catalog in prompt and tool definitions
+    const storyTitles = (state.customStories || []).map(s => `"${s.title}" (ID: ${s.id})`).join(', ');
+    const systemInstruction = `You are Jeeves. Available stories in library: [${storyTitles}]. If the user asks for a story or accepts a story suggestion, call the read_story tool function with the matching story ID.`;
     const context = history.slice(0, 3).map(turn => turn.parts.map(p => p.text).join(' ')).join(' ').substring(0, 500);
     const url = `https://generativelanguage.googleapis.com/v1beta/${state.model}:generateContent?key=${encodeURIComponent(state.apiKey)}`;
     try {
@@ -1257,6 +1260,22 @@
   }
 
 
+  // Reads a library story aloud via JeevesReader once Jeeves finishes his spoken lead-in.
+  async function startStoryFromChat(spec){
+    const restart = /:START$/i.test(spec);
+    const storyId = spec.replace(/:(START|RESUME)$/i, '');
+    const story = (state.customStories || []).find(s => s.id === storyId);
+    if (!story) return;
+    const text = await preloadStoryText(story);
+    if (!text) return;
+    while (isSpeaking || speechQueue.length > 0) await new Promise(r => setTimeout(r, 250));
+    stopListening();
+    if (restart) state.readerProgress[story.id] = 0;
+    JeevesReader.load(text, story.id);
+    showReaderBar(story.title);
+    JeevesReader.play().then(updateReaderBar);
+  }
+
   function addModelMessagePlaceholder(){
     const { row, bubble } = messageRow('model');
     const phrases = [
@@ -1350,6 +1369,16 @@
 
 
 
+    const readable = (state.customStories || []).filter(st => st.id && st.title);
+    if (readable.length) {
+      const list = readable.map(st => {
+        const n = (state.storyTextCache.get(st.id) || st.rawLit || '').split(/\r?\n/).filter(l => l.trim()).length;
+        const at = state.readerProgress[st.id] || 0;
+        const mark = (at > 0 && at < n) ? `, bookmarked at ${Math.round(at / n * 100)}%` : '';
+        return `"${st.title}" (ID: ${st.id}${mark})`;
+      }).join(', ');
+      instructions += `\n- Story Library: you can read these stories aloud: ${list}.\n  STORY PROTOCOL: (1) If the person asks for a story without naming one, or the moment suits it, offer exactly ONE title by name, phrased as a question, and do not list the others. Do not include the marker in an offer. (2) If they decline, acknowledge it in a few gracious words and offer a different title they have not yet declined; if none remain, say so and ask what else you might do. (3) If they accept, or name a story themselves, and that story has NO bookmark, reply with exactly one short sentence in the form "Here is <Title>, ${h}:" followed by the marker [[READ_STORY:ID]]. (4) If the story they chose IS marked as bookmarked, do not start yet: ask in one brief question whether they would like it from the beginning or resumed where you last left off, and include no marker. If they already said which in their request, skip the question. (5) Once they answer, reply with one short sentence, either "Here is <Title>, ${h}:" for the beginning or "Resuming <Title> where we left off, ${h}:" for resuming, followed by the marker [[READ_STORY:ID:START]] or [[READ_STORY:ID:RESUME]] accordingly. Replies that carry a marker must not end with a question, and this overrides any other instruction to end with a follow-up question. (6) Never include a marker unless the person has just accepted or named a story and, where required, chosen beginning or resume. Do not use Google Search or add references for story requests.`;
+    }
     return instructions;
   }
 
@@ -1407,6 +1436,16 @@
     
     if (state.model && typeof loadPricingFieldsForModel === 'function') {
       loadPricingFieldsForModel(state.model);
+    }
+      // reveal Regina voice option
+    const personaField = document.getElementById('persona-field');
+    let clickCount = 0;
+    const sectionHeader = document.querySelector('.settings-section:has(#persona-field) .section-header');
+    if (sectionHeader) {
+      sectionHeader.onclick = () => {
+        clickCount++;
+        if (clickCount >= 3) personaField.style.display = 'block';
+      };
     }
   }
 
@@ -2309,6 +2348,14 @@ async function syncConvoToCloud(convo) {
         }
       }
 
+      let storyToRead = null;
+      const storyMarker = fullText.match(/\[\[READ_STORY:\s*([^\]]+?)\s*\]\]/);
+      if (storyMarker) {
+        storyToRead = storyMarker[1];
+        fullText = fullText.replace(/\s*\[\[READ_STORY:[^\]]*\]\]/g, '').trim();
+        renderMarkdownInto(modelBubble, fullText);
+      }
+
       // Grounding chunks contain the REAL, verified URIs Google Search found —
       // unlike anything the model might type in prose, these are guaranteed live.
       if (searchGroundingChunks.length) {
@@ -2360,6 +2407,8 @@ async function syncConvoToCloud(convo) {
         const meta = buildMetaLine(usageMetadata, usedModel, historyEntry.timestamp);
         if (meta) modelBubble.appendChild(meta);
       }
+
+      if (storyToRead) startStoryFromChat(storyToRead);
 
     } catch (err) {
       const errDiv = document.createElement('div');
@@ -2507,7 +2556,7 @@ async function syncConvoToCloud(convo) {
       }
     };
 
-        const TRIGGER_REGEX = /\b(?:what do you think|your thoughts|over to you|take it away|if you please|thank you),?\s*(?:jeeves|chiefs?|geeves|jeevs|jeans|teams|Jesus|sheaves)s?[\s.,!?]*$/i;
+        const TRIGGER_REGEX = /\b(?:what do you think|your thoughts|over to you|take it away|if you please|if you would|thank you),?\s*(?:jeeves|chiefs?|geeves|jeevs|jeans|teams|Jesus|sheaves)s?[\s.,!?]*$/i;
 
     recognition.onresult = (event) => {
       liveInterim = '';
@@ -2521,7 +2570,14 @@ async function syncConvoToCloud(convo) {
       }
       let combined = (baseText + committedTranscript + ' ' + liveInterim).replace(/\s+/g, ' ');
 
+      // Check for stop command
+      if (/\b(stop listening|that will be all |thank you jeeves|you may retire)\b/i.test(combined)) {
+        stopListening();
+        return;
+      }
+
       if (TRIGGER_REGEX.test(combined)) {
+
         combined = combined.replace(TRIGGER_REGEX, '').trim();
         inputEl.value = combined;
         autoResizeInput();
