@@ -1893,17 +1893,21 @@
   window.JeevesReader = JeevesReader;
 
 
+const ICON_PLAY = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="display:block;margin:auto;"><polygon points="6,4 20,12 6,20"/></svg>';
+const ICON_PAUSE = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="display:block;margin:auto;"><rect x="5" y="4" width="4.5" height="16" rx="1"/><rect x="14.5" y="4" width="4.5" height="16" rx="1"/></svg>';
+
 function buildReaderBar(container) {
   const bar = document.createElement('div');
   bar.className = 'reader-bar';
   bar.innerHTML = `
     <span class="reader-title reader-bar-title"></span>
     <button class="reader-back-btn reader-bar-btn" title="Back a line" type="button">⟲</button>
-    <button class="reader-playpause-btn reader-bar-btn" title="Play/Pause" type="button">▶</button>
+    <button class="reader-playpause-btn reader-bar-btn" title="Play/Pause" type="button" aria-label="Play or pause">${ICON_PLAY}</button>
     <input type="range" class="reader-slider" min="0" max="0" value="0" step="1">
     <span class="reader-position reader-bar-label"></span>
     <button class="reader-close-btn reader-bar-btn" title="Close" type="button">✕</button>
   `;
+
   (container || document.body).appendChild(bar);
 
   bar.querySelector('.reader-back-btn').addEventListener('click', () => {
@@ -1989,7 +1993,7 @@ function updateReaderBar() {
     if (label) label.textContent = `${Math.min(idx + 1, total)} / ${total}`;
 
     const ppBtn = bar.querySelector('.reader-playpause-btn');
-    if (ppBtn) ppBtn.textContent = JeevesReader.isPlaying ? '⏸' : '▶';
+    if (ppBtn) ppBtn.innerHTML = JeevesReader.isPlaying ? ICON_PAUSE : ICON_PLAY;
   });
 }
 
