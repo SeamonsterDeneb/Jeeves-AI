@@ -254,15 +254,18 @@
         </section>
         <!-- Step V: Suggestions -->
         <section class="settings-section" id="settings-step-v">
-          <h3>Step V: Suggestions &amp; Improvements</h3>
-          <div id="suggestion-user-view" style="display:none;">
-            <p style="font-size:13px; color:var(--mist); margin-bottom:8px;">Unresolved suggestions submitted by family or visitors:</p>
-            <div id="admin-suggestions-list" style="max-height:200px; overflow-y:auto; margin-bottom:10px; border:1px solid var(--hairline); border-radius:6px; padding:8px;"></div>
+          <div class="section-header">
+            <span class="section-numeral">V</span>
+            <h3 class="section-title">Suggestions &amp; Improvements</h3>
           </div>
-          <div id="suggestion-guest-view">
-            <p style="font-size:13px; color:var(--mist); margin-bottom:8px;">Have an idea to improve Jeeves? Leave a suggestion below:</p>
-            <textarea id="suggestion-input" placeholder="Type your suggestion here..." style="width:100%; height:70px; padding:8px; border-radius:6px; border:1px solid var(--hairline); background:var(--ink-panel-2); color:var(--ink); font-family:var(--font-ui); resize:vertical; margin-bottom:8px;"></textarea>
-            <button type="button" id="submit-suggestion-btn" style="padding:6px 14px; font-size:13px;">Submit Suggestion</button>
+          <div id="suggestion-form-view" style="margin-bottom:12px;">
+            <p style="font-size:13px; color:var(--mist); margin-bottom:8px;">Have an idea or bug report to improve Jeeves? Leave a suggestion below:</p>
+            <textarea id="suggestion-input" placeholder="Type your suggestion here..." style="width:100%; height:70px; padding:8px; border-radius:6px; border:1px solid var(--hairline); background:var(--ink-panel-2); color:var(--parchment); font-family:var(--font-ui); resize:vertical; margin-bottom:8px; box-sizing:border-box;"></textarea>
+            <button type="button" id="submit-suggestion-btn" class="btn-primary" style="padding:6px 14px; font-size:13px;">Submit Suggestion</button>
+          </div>
+          <div id="suggestion-list-view">
+            <p style="font-size:13px; color:var(--mist); margin-bottom:8px;">Current suggestions &amp; feature requests:</p>
+            <div id="admin-suggestions-list" style="margin-bottom:10px; border:1px solid var(--hairline); border-radius:6px; padding:8px;"></div>
           </div>
         </section>
       </div>

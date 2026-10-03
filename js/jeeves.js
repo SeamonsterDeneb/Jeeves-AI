@@ -134,11 +134,10 @@
         authStatus.textContent = user ? `Logged in as ${user.email}` : '';
       }
 
+      listenForSuggestions();
 
       if (user) {
-        if (user.email === 'pulsipherd@gmail.com') {
-          listenForSuggestions();
-        }
+
           await Promise.all([
             pullUserSettings(),
             pullCloudArchives(),
@@ -1414,14 +1413,6 @@
     if (hiddenModelsNote) hiddenModelsNote.style.display = 'none';
     if (modalOverlay) modalOverlay.classList.add('open');
 
-    const isOwner = currentUser && currentUser.email === 'pulsipherd@gmail.com';
-    const adminView = document.getElementById('suggestion-user-view');
-    const guestView = document.getElementById('suggestion-guest-view');
-    if (adminView && guestView) {
-      adminView.style.display = isOwner ? 'block' : 'none';
-      guestView.style.display = isOwner ? 'none' : 'block';
-    }
-
     const submitSuggBtn = document.getElementById('submit-suggestion-btn');
     if (submitSuggBtn) {
       submitSuggBtn.onclick = submitUserSuggestion;
@@ -2000,7 +1991,7 @@ function updateReaderBar() {
 let unsubscribeSuggestions = null;
 
 function listenForSuggestions() {
-  if (!window.db || !window.auth?.currentUser || window.auth.currentUser.email !== 'pulsipherd@gmail.com') return;
+  if (!window.db) return;
   if (unsubscribeSuggestions) unsubscribeSuggestions();
   
   unsubscribeSuggestions = window.db.collection('suggestions')
@@ -2008,17 +1999,18 @@ function listenForSuggestions() {
     .onSnapshot(snapshot => {
       const suggestions = [];
       snapshot.forEach(doc => suggestions.push({ id: doc.id, ...doc.data() }));
+      const isOwner = currentUser && currentUser.email === 'pulsipherd@gmail.com';
       const unresolved = suggestions.filter(s => !s.resolved);
       
       const flag = document.getElementById('settings-flag');
       if (flag) {
-        flag.style.display = unresolved.length > 0 ? 'inline-block' : 'none';
+        flag.style.display = (isOwner && unresolved.length > 0) ? 'inline-block' : 'none';
       }
 
       const bannerContainer = document.getElementById('suggestion-banner-container');
       const suggestionLink = document.getElementById('suggestion-link-trigger');
       if (bannerContainer && suggestionLink) {
-        if (unresolved.length > 0) {
+        if (isOwner && unresolved.length > 0) {
           const honorific = state.honorific || 'Sir';
           suggestionLink.textContent = `Would you like to implement one of the feature suggestions, ${honorific}?`;
           bannerContainer.style.display = 'inline-block';
@@ -2046,18 +2038,67 @@ function listenForSuggestions() {
           listEl.innerHTML = '<p style="font-size:12px; color:var(--mist); text-align:center; margin:8px 0;">No suggestions received yet.</p>';
           return;
         }
-        listEl.innerHTML = suggestions.map(s => `
-          <div style="padding:6px 8px; border-bottom:1px solid var(--hairline); display:flex; justify-content:space-between; align-items:center; font-size:12px;">
-            <div>
-              <strong>${escapeHtml(s.authorName || 'Anonymous')}</strong>: ${escapeHtml(s.text)}
-              <div style="font-size:10px; color:var(--mist);">${new Date(s.createdAt).toLocaleString()}</div>
-            </div>
-            <button type="button" onclick="toggleSuggestionResolved('${s.id}', ${!s.resolved})" style="font-size:11px; padding:2px 6px;">${s.resolved ? 'Reopen' : 'Resolve'}</button>
-          </div>
-        `).join('');
+        const sorted = [...suggestions].sort((a, b) => {
+          if (!!a.resolved !== !!b.resolved) return a.resolved ? 1 : -1;
+          const orderA = (typeof a.order === 'number' && !isNaN(a.order)) ? a.order : Infinity;
+          const orderB = (typeof b.order === 'number' && !isNaN(b.order)) ? b.order : Infinity;
+          if (orderA !== orderB) return orderA - orderB;
+          return (b.createdAt || 0) - (a.createdAt || 0);
+        });
+        listEl.innerHTML = sorted.map(s => {
+          const votes = s.votes || 0;
+          if (isOwner) {
+            return `
+              <div style="padding:6px 8px; border-bottom:1px solid var(--hairline); display:flex; gap:8px; align-items:center; font-size:12px;${s.resolved ? ' opacity: 0.55;' : ''}">
+                <div style="display:flex; flex-direction:column; align-items:center; flex-shrink:0;">
+                  <span style="font-size:10px; color:var(--brass-bright); font-weight:600; line-height:1; margin-bottom:2px;">+${votes}</span>
+                  <input type="number" min="1" step="1" placeholder="#" value="${(typeof s.order === 'number' && !isNaN(s.order)) ? s.order : ''}" onchange="updateSuggestionOrder('${s.id}', this.value)" style="width:38px; height:24px; text-align:center; font-size:11px; padding:2px; background:var(--ink-panel-2); color:var(--parchment); border:1px solid var(--hairline); border-radius:4px;">
+                </div>
+                <div style="flex:1;">
+                  <strong style="${s.resolved ? 'text-decoration: line-through;' : ''}">${escapeHtml(s.authorName || 'Anonymous')}</strong>: <span style="${s.resolved ? 'text-decoration: line-through;' : ''}">${escapeHtml(s.text)}</span>
+                  <div style="font-size:10px; color:var(--mist);">${new Date(s.createdAt).toLocaleString()}</div>
+                </div>
+                <button type="button" onclick="toggleSuggestionResolved('${s.id}', ${!s.resolved})" style="font-size:11px; padding:2px 6px; flex-shrink:0;">${s.resolved ? 'Reopen' : 'Resolve'}</button>
+              </div>
+            `;
+          } else {
+            return `
+              <div style="padding:6px 8px; border-bottom:1px solid var(--hairline); display:flex; gap:8px; align-items:center; font-size:12px;${s.resolved ? ' opacity: 0.55;' : ''}">
+                <button type="button" onclick="upvoteSuggestion('${s.id}')" title="Vote for this suggestion" style="padding:4px 8px; font-size:11px; background:var(--ink-panel-2); color:var(--parchment); border:1px solid var(--hairline); border-radius:4px; flex-shrink:0; cursor:pointer; display:flex; flex-direction:column; align-items:center; min-width:38px;">
+                  <span style="font-weight:bold; color:var(--brass-bright);">+1</span>
+                  <span style="font-size:10px; color:var(--mist);">${votes}</span>
+                </button>
+                <div style="flex:1;">
+                  <strong style="${s.resolved ? 'text-decoration: line-through;' : ''}">${escapeHtml(s.authorName || 'Anonymous')}</strong>: <span style="${s.resolved ? 'text-decoration: line-through;' : ''}">${escapeHtml(s.text)}</span>
+                  <div style="font-size:10px; color:var(--mist);">${new Date(s.createdAt).toLocaleString()}</div>
+                </div>
+                ${s.resolved ? '<span style="font-size:11px; color:var(--mist); font-style:italic;">Resolved</span>' : ''}
+              </div>
+            `;
+          }
+        }).join('');
       }
     }, err => console.warn('Suggestions listener error:', err));
 }
+
+window.upvoteSuggestion = async function(id) {
+  if (!window.db || typeof firebase === 'undefined') return;
+  try {
+    await window.db.collection('suggestions').doc(id).update({
+      votes: firebase.firestore.FieldValue.increment(1)
+    });
+  } catch(e) { console.error('Failed to upvote suggestion:', e); }
+};
+
+window.updateSuggestionOrder = async function(id, orderVal) {
+  if (!window.db) return;
+  const num = orderVal === '' ? null : Number(orderVal);
+  try {
+    await window.db.collection('suggestions').doc(id).update({
+      order: (num !== null && !isNaN(num)) ? num : null
+    });
+  } catch(e) { console.error('Failed to update suggestion order:', e); }
+};
 
 window.toggleSuggestionResolved = async function(id, resolved) {
   if (!window.db) return;
@@ -2078,7 +2119,8 @@ async function submitUserSuggestion() {
       authorEmail: currentUser ? currentUser.email : 'guest',
       authorName: currentUser ? (currentUser.displayName || currentUser.email) : 'Visitor',
       createdAt: Date.now(),
-      resolved: false
+      resolved: false,
+      votes: 0
     });
     alert('Thank you! Your suggestion has been recorded.');
   } catch(e) {
