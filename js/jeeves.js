@@ -145,12 +145,17 @@
             pullVoiceProfiles()
           ]);
           if (archiveOverlay && archiveOverlay.classList.contains('open')) {
-          if (state.activeArchiveTab === 'library') {
-            renderLibrary();
-          } else {
-            renderArchives();
+            if (state.activeArchiveTab === 'library') {
+              renderLibrary();
+            } else if (state.activeArchiveTab === 'book') {
+              renderBookOfJeeves();
+            } else if (state.activeArchiveTab === 'recipes') {
+              renderRecipeBox();
+            } else {
+              renderArchives();
+            }
           }
-        }
+
       }
     });
   }
@@ -857,10 +862,100 @@
         const wrap = document.createElement('div');
         wrap.className = 'prose-copy-wrap';
 
-        const textDiv = document.createElement('div');
-        textDiv.className = 'prose-copy-text';
-        textDiv.textContent = rawNote;
-        wrap.appendChild(textDiv);
+        // Paginate note text into square chunks if needed (~270 characters per page)
+        const maxChars = 270;
+        const pageChunks = [];
+        if (rawNote.length <= maxChars) {
+          pageChunks.push(rawNote);
+        } else {
+          const paragraphs = rawNote.split('\n');
+          let current = '';
+          paragraphs.forEach(p => {
+            if ((current + '\n' + p).trim().length > maxChars && current.trim()) {
+              pageChunks.push(current.trim());
+              current = p;
+            } else {
+              current = current ? (current + '\n' + p) : p;
+            }
+            if (current.length > maxChars) {
+              const words = current.split(' ');
+              current = '';
+              words.forEach(w => {
+                if ((current + ' ' + w).trim().length > maxChars && current.trim()) {
+                  pageChunks.push(current.trim());
+                  current = w;
+                } else {
+                  current = current ? (current + ' ' + w) : w;
+                }
+              });
+            }
+          });
+          if (current.trim()) pageChunks.push(current.trim());
+        }
+
+        const flipContainer = document.createElement('div');
+        flipContainer.className = 'postit-flip-container';
+
+        pageChunks.forEach((chunk, idx) => {
+          const pageEl = document.createElement('div');
+          pageEl.className = 'postit-page';
+          const textDiv = document.createElement('div');
+          textDiv.className = 'postit-page-text';
+          textDiv.textContent = chunk;
+          pageEl.appendChild(textDiv);
+
+          if (pageChunks.length > 1) {
+            const numDiv = document.createElement('div');
+            numDiv.className = 'postit-page-num';
+            numDiv.textContent = `${idx + 1} / ${pageChunks.length}`;
+            pageEl.appendChild(numDiv);
+          }
+          flipContainer.appendChild(pageEl);
+        });
+
+        wrap.appendChild(flipContainer);
+
+        // If multi-page, add corner navigation & initialize St.PageFlip
+        if (pageChunks.length > 1) {
+          const prevBtn = document.createElement('button');
+          prevBtn.type = 'button';
+          prevBtn.className = 'postit-nav-btn postit-prev';
+          prevBtn.title = 'Previous page';
+          prevBtn.setAttribute('aria-label', 'Previous page');
+          prevBtn.innerHTML = '<span class="flip-icon">&#x293E;</span>';
+
+          const nextBtn = document.createElement('button');
+          nextBtn.type = 'button';
+          nextBtn.className = 'postit-nav-btn postit-next';
+          nextBtn.title = 'Next page';
+          nextBtn.setAttribute('aria-label', 'Next page');
+          nextBtn.innerHTML = '<span class="flip-icon">&#x293F;</span>';
+
+          wrap.appendChild(prevBtn);
+          wrap.appendChild(nextBtn);
+
+          if (window.St && window.St.PageFlip) {
+            setTimeout(() => {
+              try {
+                const pageFlip = new window.St.PageFlip(flipContainer, {
+                  width: 290,
+                  height: 290,
+                  size: 'fixed',
+                  showCover: false,
+                  usePortrait: true,
+                  maxShadowOpacity: 0.25,
+                  mobileScrollSupport: false
+                });
+                pageFlip.loadFromHTML(flipContainer.querySelectorAll('.postit-page'));
+
+                prevBtn.onclick = (e) => { e.stopPropagation(); pageFlip.flipPrev(); };
+                nextBtn.onclick = (e) => { e.stopPropagation(); pageFlip.flipNext(); };
+              } catch (e) {
+                console.warn('Post-it flip initialization skipped:', e);
+              }
+            }, 50);
+          }
+        }
 
         const dogEar = document.createElement('div');
         dogEar.className = 'dog-ear';
@@ -873,8 +968,8 @@
         const copyBtn = document.createElement('button');
         copyBtn.className = 'corner-copy-btn';
         copyBtn.type = 'button';
-        copyBtn.title = 'Copy note';
-        copyBtn.setAttribute('aria-label', 'Copy note');
+        copyBtn.title = 'Copy entire note';
+        copyBtn.setAttribute('aria-label', 'Copy entire note');
         
         const copyIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
         const checkIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
@@ -2655,6 +2750,8 @@ async function syncConvoToCloud(convo) {
       tabNav.innerHTML = `
         <button type="button" class="archive-tab-btn ${state.activeArchiveTab === 'archives' ? 'active' : ''}" data-tab="archives">Conversations</button>
         <button type="button" class="archive-tab-btn ${state.activeArchiveTab === 'library' ? 'active' : ''}" data-tab="library">Story Library</button>
+        <button type="button" class="archive-tab-btn ${state.activeArchiveTab === 'book' ? 'active' : ''}" data-tab="book">Book of Jeeves</button>
+        <button type="button" class="archive-tab-btn ${state.activeArchiveTab === 'recipes' ? 'active' : ''}" data-tab="recipes">Recipe Box</button>
       `;
 
       if (archiveContent && archiveContent.parentElement) {
@@ -2670,6 +2767,10 @@ async function syncConvoToCloud(convo) {
           if (state.activeArchiveTab === 'library') {
             if (isAuthenticated) await pullCloudStories();
             renderLibrary();
+          } else if (state.activeArchiveTab === 'book') {
+            renderBookOfJeeves();
+          } else if (state.activeArchiveTab === 'recipes') {
+            renderRecipeBox();
           } else {
             renderArchives();
           }
@@ -2680,6 +2781,34 @@ async function syncConvoToCloud(convo) {
         b.classList.toggle('active', b.dataset.tab === state.activeArchiveTab);
       });
     }
+  }
+
+  function renderBookOfJeeves() {
+    ensureArchiveTabs();
+    if (!archiveContent) return;
+    archiveContent.innerHTML = `
+      <div class="archive-panel-toolbar">
+        <input type="text" id="search-book" placeholder="Search the Book of Jeeves…" aria-label="Search Book of Jeeves">
+      </div>
+      <div style="text-align:center; padding:40px 20px; color:var(--mist); font-family:var(--font-display); font-size:18px;">
+        <em>The Book of Jeeves is being assembled…</em>
+      </div>
+    `;
+    archiveOverlay.classList.add('open');
+  }
+
+  function renderRecipeBox() {
+    ensureArchiveTabs();
+    if (!archiveContent) return;
+    archiveContent.innerHTML = `
+      <div class="archive-panel-toolbar">
+        <input type="text" id="search-recipes" placeholder="Search the Recipe Box…" aria-label="Search Recipe Box">
+      </div>
+      <div style="text-align:center; padding:40px 20px; color:var(--mist); font-family:var(--font-display); font-size:18px;">
+        <em>Jeeves' Recipe Box is being organized…</em>
+      </div>
+    `;
+    archiveOverlay.classList.add('open');
   }
 
   async function preloadStoryText(story) {
@@ -3605,13 +3734,33 @@ ${numbered}`;
 
   document.getElementById('new-chat-btn')?.addEventListener('click', startNewChat);
   document.getElementById('archive-btn')?.addEventListener('click', async () => {
-    if (isAuthenticated && window.db && window.auth?.currentUser) {
-      await Promise.all([pullCloudArchives(), pullCloudStories()]);
+    const btn = document.getElementById('archive-btn');
+    if (btn) btn.classList.add('active');
+    
+    if (archiveContent) {
+      archiveContent.innerHTML = `
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 20px; color:var(--mist); font-family:var(--font-display); font-size:18px;">
+          <em>Preparing the archives for you, ${escapeHtml(state.honorific)}…</em>
+        </div>
+      `;
     }
-    if (state.activeArchiveTab === 'library') {
-      renderLibrary();
-    } else {
-      renderArchives();
+    if (archiveOverlay) archiveOverlay.classList.add('open');
+
+    try {
+      if (isAuthenticated && window.db && window.auth?.currentUser) {
+        await Promise.all([pullCloudArchives(), pullCloudStories()]);
+      }
+      if (state.activeArchiveTab === 'library') {
+        renderLibrary();
+      } else if (state.activeArchiveTab === 'book') {
+        renderBookOfJeeves();
+      } else if (state.activeArchiveTab === 'recipes') {
+        renderRecipeBox();
+      } else {
+        renderArchives();
+      }
+    } finally {
+      if (btn) btn.classList.remove('active');
     }
   });
 

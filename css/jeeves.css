@@ -324,19 +324,91 @@ header.letterhead{
     color:#fff; border-color:#fff; }
 
   .prose-copy-wrap{
-    margin:12px 0;
-    padding:14px 16px 28px;
-    border-radius:var(--radius);
-    border:1px solid rgba(0,0,0,0.08);
-    background: #FFFF88;
-    color: slategray;
-    position:relative;
-    font-family:inherit;
-    font-size:0.95em;
-    line-height:1.55;
-    white-space:pre-wrap;
-    word-break:break-word;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+    margin: 14px 0;
+    width: 290px;
+    height: 290px;
+    max-width: 100%;
+    background: #fff985;
+    border-radius: 4px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+    position: relative;
+    user-select: text;
+    border: 1px solid rgba(0,0,0,0.08);
+  }
+
+  .postit-flip-container{
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+    border-radius: 4px;
+  }
+
+  .postit-page{
+    width: 290px;
+    height: 290px;
+    background: #fff985;
+    color: #2b2b24;
+    padding: 16px 18px 34px 18px;
+    box-sizing: border-box;
+    font-family: var(--font-ui);
+    font-size: 13.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+  .postit-page::-webkit-scrollbar { width: 4px; }
+  .postit-page::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
+
+  .postit-page-text{
+    flex: 1 1 auto;
+  }
+
+  .postit-page-num{
+    margin-top: auto;
+    padding-top: 4px;
+    font-size: 10.5px;
+    color: rgba(0,0,0,0.45);
+    text-align: right;
+    user-select: none;
+  }
+
+  .postit-nav-btn{
+    position: absolute;
+    top: 6px;
+    z-index: 10;
+    background: rgba(0,0,0,0.07);
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #3b3a2a;
+    transition: background 0.15s, transform 0.15s;
+    user-select: none;
+  }
+  .postit-nav-btn.postit-prev{
+    left: 8px;
+  }
+  .postit-nav-btn.postit-next{
+    right: 8px;
+  }
+  .postit-nav-btn .flip-icon{
+    display: inline-block;
+    transform: scaleY(-1);
+    line-height: 1;
+  }
+  .postit-nav-btn:hover{
+    background: rgba(0,0,0,0.16);
+    transform: scale(1.08);
   }
 
 .prose-copy-wrap::before,
@@ -625,6 +697,7 @@ header.letterhead{
 
   /* Conversation archive & Library tabs */
   .archive-header{
+    flex: 0 0 auto;
     display:flex;
     align-items:center;
     justify-content:space-between;
@@ -640,6 +713,7 @@ header.letterhead{
     color:var(--parchment);
   }
   .archive-tab-nav {
+    flex: 0 0 auto;
     display: flex;
     gap: 4px;
     max-width: 860px;
@@ -647,8 +721,12 @@ header.letterhead{
     margin: 0 auto;
     padding-left: 8px;
     border-bottom: 2px solid var(--hairline);
+    overflow-x: auto;
+    scrollbar-width: none;
   }
+  .archive-tab-nav::-webkit-scrollbar { display: none; }
   .archive-tab-btn {
+    white-space: nowrap;
     padding: 8px 18px;
     font-size: 13.5px;
     font-family: var(--font-ui);
@@ -718,6 +796,8 @@ header.letterhead{
     color:var(--parchment);
   }
   .archive-list{
+    flex: 1 1 auto;
+    min-height: 0;
     max-width:860px;
     width:100%;
     margin:0 auto;
