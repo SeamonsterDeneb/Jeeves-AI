@@ -711,7 +711,14 @@ header.letterhead{
     box-shadow: 0 12px 32px rgba(0,0,0,0.45);
     border-radius: 6px;
     background: #f7f1e1;
+    overflow: hidden;
+    position: relative;
   }
+  .stf__parent, .stf__wrapper {
+    overflow: hidden !important;
+    border-radius: 6px;
+  }
+
   .book-page {
     background-color: #f7f1e1;
     color: #2b2318;

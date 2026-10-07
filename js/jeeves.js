@@ -208,9 +208,13 @@
 
             // 2. Identify Book of Jeeves prose notes & poetry (non-programming blocks)
             const isExplicitProse = /^(copy|draft|quote|prose|poem|poetry|text|note|markdown|md)?$/i.test(lang);
-            if (isExplicitProse && !codeLangs.has(lang)) {
+            const isScriptDialogue = /^\[(?:Jeeves|Bertie|Aunt\s+[A-Za-z]+|Bingo|Gussie)\]/im.test(body);
+            const isCodeHeuristic = /^(?:import |export |const |let |var |function |class |def |public |private |<div|<script)/m.test(body);
+
+            if (isExplicitProse && !codeLangs.has(lang) && !isScriptDialogue && !isCodeHeuristic) {
               // Avoid capturing raw JSON / story payload markers
-              if (body.startsWith('[[READ_STORY') || body.startsWith('{') && body.endsWith('}')) continue;
+              if (body.startsWith('[[READ_STORY') || (body.startsWith('{') && body.endsWith('}'))) continue;
+
 
               if (!bookMap.has(id)) {
                 const [rawFirstLine = ''] = body.split('\n');
@@ -2370,23 +2374,61 @@ async function submitUserSuggestion() {
   }
 }
 
-async function syncConvoToCloud(convo) {
-  if (!isAuthenticated || !window.db || !window.auth?.currentUser || !convo) return;
-  try {
-    await window.db
-      .collection('users')
-      .doc(window.auth.currentUser.uid)
-      .collection('conversations')
-      .doc(convo.id)
-      .set({
-        title: convo.title || 'Main Conversation',
-        history: convo.history || [],
-        updatedAt: convo.updatedAt || Date.now()
-      }, { merge: true });
-  } catch (e) {
-    console.error(`Cloud sync failed, ${state.honorific}:`, e);
+  function prepareConvoForSync(convo) {
+    if (!convo) return null;
+    const clone = JSON.parse(JSON.stringify(convo));
+    if (Array.isArray(clone.history)) {
+      clone.history = clone.history.map(turn => {
+        if (!turn) return turn;
+        const sanitizedTurn = { ...turn };
+        if (Array.isArray(sanitizedTurn.parts)) {
+          sanitizedTurn.parts = sanitizedTurn.parts.map(p => {
+            if (!p) return p;
+            const cleanPart = { ...p };
+            if (cleanPart.inlineData && cleanPart.inlineData.data) {
+              cleanPart.inlineData = { mimeType: cleanPart.inlineData.mimeType, data: '' };
+            }
+            if (cleanPart.inline_data && cleanPart.inline_data.data) {
+              cleanPart.inline_data = { mime_type: cleanPart.inline_data.mime_type, data: '' };
+            }
+            if (typeof cleanPart.text === 'string' && cleanPart.text.length > 40000) {
+              cleanPart.text = cleanPart.text.slice(0, 4000) + '\n\n[…Large attachment truncated for cloud backup…]';
+            }
+            return cleanPart;
+          });
+        }
+        if (typeof sanitizedTurn.text === 'string' && sanitizedTurn.text.length > 40000) {
+          sanitizedTurn.text = sanitizedTurn.text.slice(0, 4000) + '\n\n[…Large text truncated for cloud backup…]';
+        }
+        return sanitizedTurn;
+      });
+
+      if (clone.history.length > 80) {
+        clone.history = clone.history.slice(-80);
+      }
+    }
+    return clone;
   }
-}
+
+  async function syncConvoToCloud(convo) {
+    if (!isAuthenticated || !window.db || !window.auth?.currentUser || !convo) return;
+    const payload = prepareConvoForSync(convo);
+    if (!payload) return;
+    try {
+      await window.db
+        .collection('users')
+        .doc(window.auth.currentUser.uid)
+        .collection('conversations')
+        .doc(convo.id)
+        .set({
+          title: payload.title || 'Main Conversation',
+          history: payload.history || [],
+          updatedAt: payload.updatedAt || Date.now()
+        }, { merge: true });
+    } catch (e) {
+      console.error(`Cloud sync failed, ${state.honorific}:`, e);
+    }
+  }
 
   function persistHistory(){
     const idx = state.conversations.findIndex(c => c.id === state.activeId);
@@ -2930,11 +2972,31 @@ async function syncConvoToCloud(convo) {
     }
   }
 
+  function splitNoteIntoLeaves(text, maxLines = 14, maxChars = 700) {
+    const rawLines = (text || '').split('\n');
+    const pages = [];
+    let currentLines = [];
+    let currentCharCount = 0;
+    rawLines.forEach(line => {
+      const estimatedLines = Math.max(1, Math.ceil(line.length / 42));
+      if (currentLines.length > 0 && (currentLines.length + estimatedLines > maxLines || currentCharCount + line.length > maxChars)) {
+        pages.push(currentLines.join('\n'));
+        currentLines = [line];
+        currentCharCount = line.length;
+      } else {
+        currentLines.push(line);
+        currentCharCount += line.length + 1;
+      }
+    });
+    if (currentLines.length > 0) pages.push(currentLines.join('\n'));
+    return pages.length > 0 ? pages : [text];
+  }
+
   let activeBookFlip = null;
 
-  function renderBookOfJeeves(searchTerm = '') {
+
+  function renderBookOfJeeves(searchTerm = '', targetPageIndex = 0) {
     harvestNotesAndRecipes();
-    ensureArchiveTabs();
     if (!archiveContent) return;
     archiveContent.innerHTML = '';
 
@@ -2960,28 +3022,42 @@ async function syncConvoToCloud(convo) {
       return;
     }
 
+    const flattenedPages = [];
+    notes.forEach(note => {
+      const leaves = splitNoteIntoLeaves(note.text);
+      leaves.forEach((leafText, leafIdx) => {
+        flattenedPages.push({ note, leafText, leafIndex: leafIdx, totalLeaves: leaves.length });
+      });
+    });
+
     const containerWrap = document.createElement('div');
+
     containerWrap.className = 'book-container-wrap';
 
     const bookEl = document.createElement('div');
     bookEl.className = 'jeeves-book';
     bookEl.id = 'book-of-jeeves-flip';
 
-    notes.forEach((note, idx) => {
+    flattenedPages.forEach((item, idx) => {
+      const { note, leafText, leafIndex, totalLeaves } = item;
       const page = document.createElement('div');
       page.className = 'book-page';
       page.dataset.id = note.id;
 
+      const titleDisplay = leafIndex === 0
+        ? escapeHtml(note.title)
+        : `${escapeHtml(note.title)} <small style="font-size:12px; font-weight:normal; opacity:0.75;">(cont.)</small>`;
+
       page.innerHTML = `
         <div class="book-page-header">
-          <span class="book-page-title">${escapeHtml(note.title)}</span>
+          <span class="book-page-title">${titleDisplay}</span>
           <button type="button" class="delete-note-btn" title="Discard note" style="background:transparent; border:none; color:var(--claret); cursor:pointer; font-size:13px; padding:0 4px;">✕</button>
         </div>
-        <div class="book-page-body">${escapeHtml(note.text)}</div>
+        <div class="book-page-body">${escapeHtml(leafText)}</div>
         <div class="book-page-footer">
           <span>${new Date(note.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-          <button type="button" class="copy-note-btn archive-btn" style="padding:2px 8px; font-size:11px;">Copy</button>
-          <span>Folio ${idx + 1} of ${notes.length}</span>
+          <button type="button" class="copy-note-btn archive-btn" style="padding:2px 8px; font-size:11px;">Copy All</button>
+          <span>Folio ${idx + 1} of ${flattenedPages.length}${totalLeaves > 1 ? ` · [${leafIndex + 1}/${totalLeaves}]` : ''}</span>
         </div>
       `;
 
@@ -2996,15 +3072,17 @@ async function syncConvoToCloud(convo) {
       page.querySelector('.delete-note-btn').onclick = (e) => {
         e.stopPropagation();
         if (confirm(`Discard "${note.title}" from the Book of Jeeves, ${state.honorific}?`)) {
+          const currentPage = activeBookFlip ? activeBookFlip.getCurrentPageIndex() : idx;
           state.deletedHarvestIds.push(note.id);
           state.bookNotes = state.bookNotes.filter(n => n.id !== note.id);
           try {
             localStorage.setItem(LS_KEY_DELETED_HARVESTS, JSON.stringify(state.deletedHarvestIds));
             localStorage.setItem(LS_KEY_BOOK_NOTES, JSON.stringify(state.bookNotes));
           } catch(err){}
-          renderBookOfJeeves(searchTerm);
+          renderBookOfJeeves(searchTerm, Math.max(0, currentPage - 1));
         }
       };
+
 
       bookEl.appendChild(page);
     });
@@ -3036,16 +3114,19 @@ async function syncConvoToCloud(convo) {
       setTimeout(() => {
         try {
           if (activeBookFlip) activeBookFlip.destroy();
+          const safeStartPage = Math.min(targetPageIndex, Math.max(0, flattenedPages.length - 1));
           activeBookFlip = new window.St.PageFlip(bookEl, {
             width: pageWidth,
             height: pageHeight,
             size: isMobile ? 'fixed' : 'fixed',
+            startPage: safeStartPage,
             showCover: false,
             showPageCorners: false,
             usePortrait: isMobile,
             maxShadowOpacity: 0.2,
             mobileScrollSupport: false
           });
+
           activeBookFlip.loadFromHTML(bookEl.querySelectorAll('.book-page'));
 
           prevBtn.onclick = () => activeBookFlip.flipPrev();
