@@ -46,6 +46,9 @@
   const LS_KEY_STORY_OVERRIDES = 'jeeves_story_overrides'; // { [builtInStoryId]: editedRawLitText }
   const LS_KEY_STORY_CHARACTERS = 'jeeves_story_characters'; // { [storyId]: ['Bertie','Jeeves',...] }
   const LS_KEY_LIBRARY_ORDER = 'jeeves_library_order'; // personal, device-only card order
+  const LS_KEY_BOOK_NOTES = 'jeeves_book_notes';
+  const LS_KEY_RECIPES = 'jeeves_recipes';
+  const LS_KEY_DELETED_HARVESTS = 'jeeves_deleted_harvest_ids';
   const LS_KEY_CONVERSATIONS = 'jeeves_archives';
 
   const LS_KEY_ACTIVE = 'jeeves_active_id';
@@ -89,10 +92,153 @@
     storyOverrides: JSON.parse(localStorage.getItem(LS_KEY_STORY_OVERRIDES) || '{}'),
     storyCharacters: JSON.parse(localStorage.getItem(LS_KEY_STORY_CHARACTERS) || '{}'),
     libraryOrder: JSON.parse(localStorage.getItem(LS_KEY_LIBRARY_ORDER) || '[]'),
+    bookNotes: JSON.parse(localStorage.getItem(LS_KEY_BOOK_NOTES) || '[]'),
+    recipes: JSON.parse(localStorage.getItem(LS_KEY_RECIPES) || '[]'),
+    deletedHarvestIds: JSON.parse(localStorage.getItem(LS_KEY_DELETED_HARVESTS) || '[]'),
     activeArchiveTab: 'archives',
+
     storyCatalogue: [],
     storyTextCache: new Map(),
   };
+
+    // Automatic categorization for recipes
+  function categorizeRecipeText(title, content) {
+    const hay = `${title} ${content}`.toLowerCase();
+    if (/\b(beverage|cocktail|drink|tea|coffee|punch|smoothie|juice|wine|gin|tonic|sherry|cordial|pick-me-up)\b/i.test(hay)) {
+      return 'Pick-Me-Ups & Beverages';
+    }
+    if (/\b(breakfast|toast|egg|eggs|omelet|omelette|pancake|waffle|bacon|sausage|porridge|muffin|scone|biscuit|kipper)\b/i.test(hay)) {
+      return 'Morning Fare & Savouries';
+    }
+    if (/\b(dessert|cake|pie|cookie|pudding|sweet|custard|tart|ice cream|brownie|chocolate|pastry|sorbet)\b/i.test(hay)) {
+      return 'Puddings & Confections';
+    }
+    if (/\b(sauce|dressing|marinade|dip|glaze|gravy|stock|broth|vinaigrette|mayonnaise|hollandaise)\b/i.test(hay)) {
+      return 'Sauces, Dressings & Stocks';
+    }
+    if (/\b(salad|soup|side|potato|potatoes|vegetable|vegetables|rice|beans|slaw|greens)\b/i.test(hay)) {
+      return 'Soups & Accompaniments';
+    }
+    return 'Entrées & Mains';
+  }
+
+  // Generate a deterministic ID for a harvested snippet
+  function makeHarvestId(text) {
+    let hash = 0;
+    const clean = text.trim();
+    for (let i = 0; i < clean.length; i++) {
+      hash = ((hash << 5) - hash) + clean.charCodeAt(i);
+      hash |= 0;
+    }
+    return 'h_' + Math.abs(hash).toString(36);
+  }
+
+  function harvestNotesAndRecipes() {
+    const bookMap = new Map();
+    state.bookNotes.forEach(n => bookMap.set(n.id, n));
+
+    const recipeMap = new Map();
+    state.recipes.forEach(r => recipeMap.set(r.id, r));
+
+    // Combine saved conversations with the currently active conversation history
+    const allConvos = [...(state.conversations || [])];
+    if (state.history && state.history.length > 0) {
+      allConvos.push({
+        id: state.currentConvoId || 'active_session',
+        title: state.currentConvoTitle || 'Current Conversation',
+        history: state.history,
+        updatedAt: Date.now()
+      });
+    }
+
+    allConvos.forEach(convo => {
+      (convo.history || []).forEach(turn => {
+        if (!turn) return;
+        const role = turn.role || '';
+        if (role !== 'model' && role !== 'assistant') return;
+
+        // Extract raw text across all possible turn payload schemas
+        let texts = [];
+        if (Array.isArray(turn.parts)) {
+          turn.parts.forEach(p => { if (p && p.text) texts.push(p.text); });
+        }
+        if (typeof turn.content === 'string') texts.push(turn.content);
+        if (typeof turn.text === 'string') texts.push(turn.text);
+
+        texts.forEach(raw => {
+          if (!raw) return;
+
+          // Excluded programming language tags
+          const codeLangs = new Set(['javascript','js','json','html','css','scss','typescript','ts','python','py','bash','sh','shell','sql','xml','yaml','yml','php','c','cpp','cs','java','go','rust']);
+
+          // Scan all fenced blocks: ```lang ... ```
+          const fenceRegex = /```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/gi;
+          let match;
+          while ((match = fenceRegex.exec(raw)) !== null) {
+            const [ , rawLang = '', rawBody = '' ] = match;
+            const lang = rawLang.trim().toLowerCase();
+            const body = rawBody.trim();
+            if (!body || body.length < 15) continue;
+
+            const id = makeHarvestId(body);
+            if (state.deletedHarvestIds.includes(id)) continue;
+
+            // 1. Distinguish culinary recipes
+            const hasIngredients = /\b(ingredients|yield|servings|prep time|cook time)\b/i.test(body);
+            const hasCulinaryUnits = /\b(tablespoons?|tbsp|teaspoons?|tsp|cups?|ounces?|oz|grams?|cloves?|pinch)\b/i.test(body);
+            const hasCulinarySteps = /\b(whisk|bake|saute|sauté|simmer|boil|stir|preheat|garnish|blend|fold in)\b/i.test(body);
+
+            if ((hasIngredients && hasCulinaryUnits) || (hasIngredients && hasCulinarySteps)) {
+              if (!recipeMap.has(id)) {
+                const [rawFirstLine = ''] = body.split('\n');
+                const firstLine = rawFirstLine.replace(/^[#*-\s]+/, '').trim();
+                const recipeTitle = firstLine.length > 45 ? firstLine.substring(0, 42) + '…' : (firstLine || 'Culinary Creation');
+                recipeMap.set(id, {
+                  id,
+                  convoId: convo.id,
+                  convoTitle: convo.title || 'Conversation',
+                  title: recipeTitle,
+                  text: body,
+                  category: categorizeRecipeText(recipeTitle, body),
+                  timestamp: turn.timestamp || convo.updatedAt || Date.now()
+                });
+              }
+              continue; // Do not also add recipes into the Book of Jeeves
+            }
+
+            // 2. Identify Book of Jeeves prose notes & poetry (non-programming blocks)
+            const isExplicitProse = /^(copy|draft|quote|prose|poem|poetry|text|note|markdown|md)?$/i.test(lang);
+            if (isExplicitProse && !codeLangs.has(lang)) {
+              // Avoid capturing raw JSON / story payload markers
+              if (body.startsWith('[[READ_STORY') || body.startsWith('{') && body.endsWith('}')) continue;
+
+              if (!bookMap.has(id)) {
+                const [rawFirstLine = ''] = body.split('\n');
+                const firstLine = rawFirstLine.replace(/^[#*-\s]+/, '').trim();
+                const noteTitle = firstLine.length > 40 ? firstLine.substring(0, 37) + '…' : (firstLine || 'Distilled Note');
+                bookMap.set(id, {
+                  id,
+                  convoId: convo.id,
+                  convoTitle: convo.title || 'Conversation',
+                  title: noteTitle,
+                  text: body,
+                  timestamp: turn.timestamp || convo.updatedAt || Date.now()
+                });
+              }
+            }
+          }
+        });
+      });
+    });
+
+    state.bookNotes = Array.from(bookMap.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    state.recipes = Array.from(recipeMap.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    try {
+      localStorage.setItem(LS_KEY_BOOK_NOTES, JSON.stringify(state.bookNotes));
+      localStorage.setItem(LS_KEY_RECIPES, JSON.stringify(state.recipes));
+    } catch(e){}
+  }
 
     // Falls back to the default model whenever a mode has no override set.
   function getModelForConvoType(type){
@@ -2543,6 +2689,7 @@ async function syncConvoToCloud(convo) {
       if (usageMetadata) historyEntry.usage = usageMetadata;
       state.history.push(historyEntry);
       persistHistory();
+      harvestNotesAndRecipes();
 
       if (usageMetadata) {
         const meta = buildMetaLine(usageMetadata, usedModel, historyEntry.timestamp);
@@ -2783,17 +2930,136 @@ async function syncConvoToCloud(convo) {
     }
   }
 
-  function renderBookOfJeeves() {
+  let activeBookFlip = null;
+
+  function renderBookOfJeeves(searchTerm = '') {
+    harvestNotesAndRecipes();
     ensureArchiveTabs();
     if (!archiveContent) return;
-    archiveContent.innerHTML = `
-      <div class="archive-panel-toolbar">
-        <input type="text" id="search-book" placeholder="Search the Book of Jeeves…" aria-label="Search Book of Jeeves">
-      </div>
-      <div style="text-align:center; padding:40px 20px; color:var(--mist); font-family:var(--font-display); font-size:18px;">
-        <em>The Book of Jeeves is being assembled…</em>
-      </div>
+    archiveContent.innerHTML = '';
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'archive-panel-toolbar';
+    toolbar.innerHTML = `
+      <input type="text" id="search-book" placeholder="Search the Book of Jeeves…" aria-label="Search Book of Jeeves" value="${escapeHtml(searchTerm)}">
     `;
+    archiveContent.appendChild(toolbar);
+
+    const term = searchTerm.toLowerCase().trim();
+    const notes = state.bookNotes.filter(n => !term || n.title.toLowerCase().includes(term) || n.text.toLowerCase().includes(term));
+
+    if (!notes.length) {
+      const emptyMsg = document.createElement('div');
+      emptyMsg.style.cssText = 'text-align:center; padding:60px 20px; color:var(--mist); font-family:var(--font-display); font-size:18px;';
+      emptyMsg.innerHTML = term
+        ? `<em>No distilled wisdom matches "${escapeHtml(searchTerm)}".</em>`
+        : `<em>The Book of Jeeves is currently blank, ${escapeHtml(state.honorific)}. Notes provided in copy-blocks will appear here automatically.</em>`;
+      archiveContent.appendChild(emptyMsg);
+      archiveOverlay.classList.add('open');
+      toolbar.querySelector('#search-book')?.focus();
+      return;
+    }
+
+    const containerWrap = document.createElement('div');
+    containerWrap.className = 'book-container-wrap';
+
+    const bookEl = document.createElement('div');
+    bookEl.className = 'jeeves-book';
+    bookEl.id = 'book-of-jeeves-flip';
+
+    notes.forEach((note, idx) => {
+      const page = document.createElement('div');
+      page.className = 'book-page';
+      page.dataset.id = note.id;
+
+      page.innerHTML = `
+        <div class="book-page-header">
+          <span class="book-page-title">${escapeHtml(note.title)}</span>
+          <button type="button" class="delete-note-btn" title="Discard note" style="background:transparent; border:none; color:var(--claret); cursor:pointer; font-size:13px; padding:0 4px;">✕</button>
+        </div>
+        <div class="book-page-body">${escapeHtml(note.text)}</div>
+        <div class="book-page-footer">
+          <span>${new Date(note.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+          <button type="button" class="copy-note-btn archive-btn" style="padding:2px 8px; font-size:11px;">Copy</button>
+          <span>Folio ${idx + 1} of ${notes.length}</span>
+        </div>
+      `;
+
+      page.querySelector('.copy-note-btn').onclick = (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(note.text).then(() => {
+          e.target.textContent = 'Copied!';
+          setTimeout(() => { e.target.textContent = 'Copy'; }, 1500);
+        });
+      };
+
+      page.querySelector('.delete-note-btn').onclick = (e) => {
+        e.stopPropagation();
+        if (confirm(`Discard "${note.title}" from the Book of Jeeves, ${state.honorific}?`)) {
+          state.deletedHarvestIds.push(note.id);
+          state.bookNotes = state.bookNotes.filter(n => n.id !== note.id);
+          try {
+            localStorage.setItem(LS_KEY_DELETED_HARVESTS, JSON.stringify(state.deletedHarvestIds));
+            localStorage.setItem(LS_KEY_BOOK_NOTES, JSON.stringify(state.bookNotes));
+          } catch(err){}
+          renderBookOfJeeves(searchTerm);
+        }
+      };
+
+      bookEl.appendChild(page);
+    });
+
+    containerWrap.appendChild(bookEl);
+    archiveContent.appendChild(containerWrap);
+
+    // Navigation triggers
+    const prevBtn = document.createElement('button');
+    prevBtn.type = 'button';
+    prevBtn.className = 'book-page-nav-btn prev';
+    prevBtn.title = 'Previous page';
+    prevBtn.innerHTML = '<span class="flip-icon">&#x293E;</span>';
+
+    const nextBtn = document.createElement('button');
+    nextBtn.type = 'button';
+    nextBtn.className = 'book-page-nav-btn next';
+    nextBtn.title = 'Next page';
+    nextBtn.innerHTML = '<span class="flip-icon">&#x293F;</span>';
+
+    containerWrap.appendChild(prevBtn);
+    containerWrap.appendChild(nextBtn);
+
+    const isMobile = window.innerWidth <= 640;
+    const pageWidth = isMobile ? Math.min(window.innerWidth - 40, 340) : 340;
+    const pageHeight = isMobile ? 420 : 460;
+
+    if (window.St && window.St.PageFlip) {
+      setTimeout(() => {
+        try {
+          if (activeBookFlip) activeBookFlip.destroy();
+          activeBookFlip = new window.St.PageFlip(bookEl, {
+            width: pageWidth,
+            height: pageHeight,
+            size: isMobile ? 'fixed' : 'fixed',
+            showCover: false,
+            showPageCorners: false,
+            usePortrait: isMobile,
+            maxShadowOpacity: 0.2,
+            mobileScrollSupport: false
+          });
+          activeBookFlip.loadFromHTML(bookEl.querySelectorAll('.book-page'));
+
+          prevBtn.onclick = () => activeBookFlip.flipPrev();
+          nextBtn.onclick = () => activeBookFlip.flipNext();
+        } catch (e) {
+          console.warn('Book flip initialization skipped:', e);
+        }
+      }, 50);
+    }
+
+    toolbar.querySelector('#search-book')?.addEventListener('input', (e) => {
+      renderBookOfJeeves(e.target.value);
+    });
+
     archiveOverlay.classList.add('open');
   }
 
@@ -3886,6 +4152,7 @@ ${numbered}`;
   autoResizeInput();
 
   // ---------- Init ----------
+  harvestNotesAndRecipes();
   replayHistory();
   updateComposerHint();
   if (sessionStorage.getItem('jeeves_just_updated')) {

@@ -695,7 +695,92 @@ header.letterhead{
   }
   .empty-state button:hover{ background:rgba(184,146,90,0.12); }
 
-  /* Conversation archive & Library tabs */
+  /* Book of Jeeves Reader & Canvas */
+  .book-container-wrap {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 0;
+    position: relative;
+    padding: 10px 0;
+  }
+  .jeeves-book {
+    box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+    border-radius: 6px;
+    background: #f7f1e1;
+  }
+  .book-page {
+    background-color: #f7f1e1;
+    color: #2b2318;
+    padding: 24px 20px 20px 20px;
+    box-sizing: border-box;
+    border: 1px solid rgba(184, 146, 90, 0.2);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    font-family: var(--font-ui);
+  }
+  .book-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid var(--hairline);
+    padding-bottom: 6px;
+    margin-bottom: 10px;
+  }
+  .book-page-title {
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 700;
+    color: #4a2f13;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+  .book-page-body {
+    flex: 1 1 auto;
+    font-size: 13.5px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-y: auto;
+    color: #2b2318;
+  }
+  .book-page-footer {
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid rgba(184, 146, 90, 0.15);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: #7d6f58;
+  }
+  .book-page-nav-btn {
+    position: absolute;
+    top: 8px;
+    z-index: 5;
+    background: rgba(140, 100, 45, 0.12);
+    border: 1px solid rgba(140, 100, 45, 0.25);
+    border-radius: 50%;
+    width: 26px;
+    height: 26px;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #4a2f13;
+  }
+  .book-page-nav-btn.prev { left: 8px; }
+  .book-page-nav-btn.next { right: 8px; }
+  .book-page-nav-btn .flip-icon { display: inline-block; transform: scaleY(-1); line-height: 1; }
+
   .archive-header{
     flex: 0 0 auto;
     display:flex;
