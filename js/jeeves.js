@@ -190,9 +190,7 @@
 
             if ((hasIngredients && hasCulinaryUnits) || (hasIngredients && hasCulinarySteps)) {
               if (!recipeMap.has(id)) {
-                const [rawFirstLine = ''] = body.split('\n');
-                const firstLine = rawFirstLine.replace(/^[#*-\s]+/, '').trim();
-                const recipeTitle = firstLine.length > 45 ? firstLine.substring(0, 42) + '…' : (firstLine || 'Culinary Creation');
+                const recipeTitle = deriveRecipeTitle(body, raw);
                 recipeMap.set(id, {
                   id,
                   convoId: convo.id,
@@ -1606,12 +1604,10 @@
     } else if (state.convoType === 'general') {
       instructions += `\n- You are in 'General Conversation' mode. If you provide any draft text (emails, messages, search terms, quotes, etc.), please present the final result within a \`\`\`copy block for easy copying.`;
     } else if (state.convoType === 'cooking') {
-      instructions += `\n- You are in 'Culinary Advice' mode. Justify your recommendations by referring to reputable cooking blogs or resources by name (e.g. "Serious Eats", "Kenji López-Alt's method"). Use Google Search to find these sources. Do NOT type out URLs yourself — the application will automatically append a verified list of the sources you found via search beneath your answer, so simply mention sources by name in your prose. After explaining the suggestion, if there's enough information in the conversation to compose an entire recipe, put the entirety in a code block for easy copying`;
+      instructions += `\n- You are in 'Culinary Advice' mode. Justify your recommendations by referring to reputable cooking blogs or resources by name (e.g. "Serious Eats", "Kenji López-Alt's method"). Use Google Search to find these sources. Do NOT type out URLs yourself — the application will automatically append a verified list of the sources you found via search beneath your answer, so simply mention sources by name in your prose. After explaining the suggestion, if there's enough information in the conversation to compose an entire recipe, put the entirety in a code block for easy copying, divided into Ingredients and Methods. In the Methods, you must include the quantity of each ingredient directly inline within the instruction steps, formatted as: "In a bowl, whisk eggs (8-10 large) with milk (1c), salt (1/2tsp), and pepper (1/4tsp)."`;
     } else if (state.convoType === 'research') {
       instructions += `\n- You are in 'Research Assistance' mode. Use Google Search to ground your claims in verified, authoritative sources. Cite every claim inline with a footnote marker (following the bare-bracket rule above) placed immediately after the relevant punctuation. At the end of your response, provide a '### References' section formatted as a numbered markdown list, one entry per footnote number in order. Format each reference entry as: "According to [Source Name], [brief statement on source credibility and domain authority], " followed immediately by the key finding itself written AS the link text — e.g. According to Discovery, a premier science education network, [the Komodo dragon is the largest extant lizard, reaching up to ten feet in length](URL). The opening bracket must come right after the credibility clause, the closing bracket must sit right before "(URL)" with nothing in between, and the raw URL must never appear anywhere else in the entry — not as plain text, and not a second time. Use the exact live URLs discovered via Google Search.\n`;
     }
-
-
 
     const readable = (state.customStories || []).filter(st => st.id && st.title);
     if (readable.length) {
@@ -1625,9 +1621,6 @@
     }
     return instructions;
   }
-
-
-
 
   // ---------- Settings modal ----------
   function openModal() {
@@ -1684,7 +1677,6 @@
       };
     }
   }
-
 
   function closeModal(){
     modalOverlay.classList.remove('open');
@@ -1983,7 +1975,6 @@
     window.location.replace(`${cleanUrl}?t=${Date.now()}`);
   }
 
-
   function clearConversation(){
     state.history = [];
     persistHistory();
@@ -2128,7 +2119,6 @@
   };
   window.JeevesReader = JeevesReader;
 
-
 const ICON_PLAY = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="display:block;margin:auto;"><polygon points="6,4 20,12 6,20"/></svg>';
 const ICON_PAUSE = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="display:block;margin:auto;"><rect x="5" y="4" width="4.5" height="16" rx="1"/><rect x="14.5" y="4" width="4.5" height="16" rx="1"/></svg>';
 
@@ -2231,6 +2221,82 @@ function updateReaderBar() {
     const ppBtn = bar.querySelector('.reader-playpause-btn');
     if (ppBtn) ppBtn.innerHTML = JeevesReader.isPlaying ? ICON_PAUSE : ICON_PLAY;
   });
+}
+
+let kitchenSousChef = {
+  active: false,
+  stepIndex: 0,
+  steps: [],
+  ingredients: [],
+  recognition: null
+};
+
+function startKitchenAssistant(recipeText) {
+  // 1. Parse steps and ingredients
+  const { front, back } = partitionRecipeSides(recipeText);
+  kitchenSousChef.ingredients = front.split('\n').filter(l => l.trim().startsWith('-'));
+  kitchenSousChef.steps = back.split('\n').filter(l => /^\d+\./.test(l.trim()));
+  kitchenSousChef.stepIndex = 0;
+  kitchenSousChef.active = true;
+
+  speakSousChef("I am attending in the kitchen, Sir. Shall I read the ingredients or begin the first step?");
+}
+
+function speakSousChef(phrase) {
+  if (!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+
+  const utterance = new SpeechSynthesisUtterance(phrase);
+  utterance.rate = 1.0;
+  
+  // As soon as Jeeves finishes speaking, reopen the microphone
+  utterance.onend = () => {
+    if (kitchenSousChef.active) listenForSousChefCommand();
+  };
+
+  window.speechSynthesis.speak(utterance);
+}
+
+function listenForSousChefCommand() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) return;
+
+  const rec = new SpeechRecognition();
+  rec.continuous = false;
+  rec.lang = 'en-US';
+
+  rec.onresult = (e) => {
+    const transcript = e.results[0][0].transcript.toLowerCase();
+    handleSousChefIntent(transcript);
+  };
+
+  rec.onerror = () => {
+    // Restart listening if silenced or timed out
+    if (kitchenSousChef.active) setTimeout(listenForSousChefCommand, 800);
+  };
+
+  rec.start();
+}
+
+function handleSousChefIntent(cmd) {
+  // Command Markers
+  if (cmd.includes('next step') || cmd.includes('next')) {
+    kitchenSousChef.stepIndex = Math.min(kitchenSousChef.steps.length - 1, kitchenSousChef.stepIndex + 1);
+    speakSousChef(`Step ${kitchenSousChef.stepIndex + 1}: ${kitchenSousChef.steps[kitchenSousChef.stepIndex]}`);
+  } else if (cmd.includes('previous') || cmd.includes('back')) {
+    kitchenSousChef.stepIndex = Math.max(0, kitchenSousChef.stepIndex - 1);
+    speakSousChef(`Step ${kitchenSousChef.stepIndex + 1}: ${kitchenSousChef.steps[kitchenSousChef.stepIndex]}`);
+  } else if (cmd.includes('repeat') || cmd.includes('again')) {
+    speakSousChef(kitchenSousChef.steps[kitchenSousChef.stepIndex] || "There are no steps recorded, Sir.");
+  } else if (cmd.includes('ingredient')) {
+    speakSousChef(kitchenSousChef.ingredients.join(', '));
+  } else if (cmd.includes('thank you') || cmd.includes('stop') || cmd.includes('that will be all')) {
+    kitchenSousChef.active = false;
+    speakSousChef("Very good, Sir. I shall leave you to your culinary pursuits.");
+  } else {
+    // If not a standard navigation command, speak or dispatch query
+    speakSousChef("Pardon me, Sir. You may ask for the next step, previous step, ingredients, or to repeat.");
+  }
 }
 
 let unsubscribeSuggestions = null;
@@ -2972,6 +3038,39 @@ async function submitUserSuggestion() {
     }
   }
 
+  function deriveRecipeTitle(body, surroundingText = '') {
+    const lines = body.split('\n').map(l => l.replace(/^[#*-\s]+/, '').trim()).filter(Boolean);
+    const isGeneric = (str) => /^(ingredients|recipe|directions|instructions|yield|servings|prep time|cook time|method|notes)\b/i.test(str);
+
+    // 1. Check if first line inside code block is a genuine title
+    if (lines.length > 0 && !isGeneric(lines[0])) {
+      const candidate = lines[0].replace(/[:*#]/g, '').trim();
+      if (candidate.length >= 3 && candidate.length <= 48) return candidate;
+    }
+
+    // 2. Scan preceding prose in the conversation turn for bold header or "recipe for X"
+    if (surroundingText) {
+      const boldMatch = surroundingText.match(/\*\*([^*]{3,48})\*\*/);
+      if (boldMatch && !isGeneric(boldMatch[1].trim())) {
+        return boldMatch[1].trim();
+      }
+      const forMatch = surroundingText.match(/(?:recipe for|preparation of|formula for|how to make)\s+([^\n.:]{3,48})/i);
+      if (forMatch && !isGeneric(forMatch[1].trim())) {
+        return forMatch[1].trim();
+      }
+    }
+
+    return 'Culinary Creation';
+  }
+
+  function categorizeRecipeText(title = '', text = '') {
+    const combined = `${title} ${text}`.toLowerCase();
+    if (/\b(cocktail|gin|whiskey|brandy|vodka|rum|liqueur|syrup|garnish|ice|shaker|strain|potion|tonic|bitters|highball)\b/i.test(combined)) return 'beverages';
+    if (/\b(dessert|cake|cookie|pastry|pie|sweet|chocolate|vanilla|sugar|custard|tart)\b/i.test(combined)) return 'desserts';
+    if (/\b(breakfast|egg|omelet|toast|pancake|waffle|bacon|sausage|muffin|oats)\b/i.test(combined)) return 'breakfast';
+    return 'mains';
+  }
+
   function splitNoteIntoLeaves(text, maxLines = 14, maxChars = 700) {
     const rawLines = (text || '').split('\n');
     const pages = [];
@@ -3144,18 +3243,490 @@ async function submitUserSuggestion() {
     archiveOverlay.classList.add('open');
   }
 
-  function renderRecipeBox() {
+  async function inferRecipeTitleWithAI(recipe) {
+    if (!recipe || !state.apiKey || (recipe.title && recipe.title !== 'Culinary Creation' && !recipe.title.toLowerCase().startsWith('ingredient'))) return;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${state.apiKey}`;
+      const payload = {
+        contents: [{
+          role: 'user',
+          parts: [{ text: `Provide an elegant, concise 2-to-5 word dish or beverage name for this recipe. Return ONLY the name without markdown, punctuation, or explanations:\n\n${recipe.text.slice(0, 600)}` }]
+        }],
+        generationConfig: { maxOutputTokens: 20, temperature: 0.2 }
+      };
+      const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const aiTitle = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim().replace(/^["']|["']$/g, '');
+      if (aiTitle && aiTitle.length > 2) {
+        recipe.title = aiTitle;
+        recipe.category = categorizeRecipeText(aiTitle, recipe.text);
+        try { localStorage.setItem(LS_KEY_RECIPES, JSON.stringify(state.recipes)); } catch(e){}
+        const currentTitleEl = document.querySelector('.recipe-card-title');
+        if (currentTitleEl && currentTitleEl.textContent === 'Culinary Creation') {
+          currentTitleEl.textContent = aiTitle;
+        }
+      }
+    } catch(err) {
+      console.warn('AI recipe titling skipped:', err);
+    }
+  }
+
+  const ICON_MIC = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>`;
+
+  const sousChef = {
+    active: false,
+    stepIdx: -1,
+    ingredientIdx: -1,
+    steps: [],
+    ingredients: [],
+    recognition: null
+  };
+
+  function stopSousChef() {
+    sousChef.active = false;
+    if (sousChef.recognition) {
+      try { sousChef.recognition.abort(); } catch(e){}
+    }
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    document.querySelectorAll('.recipe-mic-btn').forEach(btn => {
+      btn.classList.remove('listening');
+      btn.title = 'Ask Jeeves to guide preparation hands-free';
+    });
+  }
+
+
+  function speakSousChef(phrase) {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(phrase);
+    utterance.rate = 1.0;
+    utterance.pitch = 0.95;
+    utterance.onend = () => {
+      if (sousChef.active) listenSousChef();
+    };
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function listenSousChef() {
+    if (!sousChef.active) return;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    if (sousChef.recognition) {
+      try { sousChef.recognition.abort(); } catch(e){}
+    }
+
+    const rec = new SpeechRecognition();
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.lang = 'en-US';
+    sousChef.recognition = rec;
+
+    rec.onresult = (e) => {
+      const text = e.results[0]?.[0]?.transcript?.trim().toLowerCase() || '';
+      handleSousChefCommand(text);
+    };
+
+    rec.onerror = () => {
+      if (sousChef.active) setTimeout(listenSousChef, 800);
+    };
+
+    rec.onend = () => {
+      if (sousChef.active && !window.speechSynthesis.speaking) {
+        setTimeout(listenSousChef, 400);
+      }
+    };
+
+    try { rec.start(); } catch(err){}
+  }
+
+  function handleSousChefCommand(cmd) {
+    if (!cmd) return;
+
+    // Exit commands
+    if (/\b(thank you|stop|cancel|quiet|dismissed|that will be all|that is all)\b/i.test(cmd)) {
+      stopSousChef();
+      speakSousChef(`Very good, ${state.honorific}. I shall leave you to your culinary arts.`);
+      return;
+    }
+
+    // Ingredient navigation
+    if (/\b(all ingredients|read (me )?(the )?ingredients|list ingredients)\b/i.test(cmd)) {
+      if (!sousChef.ingredients.length) {
+        speakSousChef(`I find no ingredients listed on this card, ${state.honorific}.`);
+      } else {
+        sousChef.ingredientIdx = 0;
+        speakSousChef(`The ingredients are: ${sousChef.ingredients.join(', ')}.`);
+      }
+      return;
+    }
+
+    if (/\b(first ingredient)\b/i.test(cmd)) {
+      if (!sousChef.ingredients.length) return speakSousChef(`No ingredients are recorded, ${state.honorific}.`);
+      sousChef.ingredientIdx = 0;
+      speakSousChef(`The first ingredient is: ${sousChef.ingredients[0]}.`);
+      return;
+    }
+
+    if (/\b(next ingredient)\b/i.test(cmd)) {
+      if (!sousChef.ingredients.length) return speakSousChef(`No ingredients are recorded, ${state.honorific}.`);
+      if (sousChef.ingredientIdx < sousChef.ingredients.length - 1) {
+        sousChef.ingredientIdx++;
+        speakSousChef(`Next: ${sousChef.ingredients[sousChef.ingredientIdx]}.`);
+      } else {
+        speakSousChef(`That was the final ingredient, ${state.honorific}.`);
+      }
+      return;
+    }
+
+    if (/\b(previous ingredient|back ingredient)\b/i.test(cmd)) {
+      if (!sousChef.ingredients.length) return speakSousChef(`No ingredients are recorded, ${state.honorific}.`);
+      if (sousChef.ingredientIdx > 0) {
+        sousChef.ingredientIdx--;
+        speakSousChef(`Previous: ${sousChef.ingredients[sousChef.ingredientIdx]}.`);
+      } else {
+        speakSousChef(`You are at the first ingredient: ${sousChef.ingredients[0]}.`);
+      }
+      return;
+    }
+
+    if (/\b(repeat ingredient|what was that ingredient)\b/i.test(cmd)) {
+      const idx = Math.max(0, sousChef.ingredientIdx);
+      speakSousChef(sousChef.ingredients[idx] || `No ingredients are available, ${state.honorific}.`);
+      return;
+    }
+
+    // Step navigation
+    if (/\b(first step|begin|start)\b/i.test(cmd)) {
+      if (!sousChef.steps.length) return speakSousChef(`I find no numbered steps on the reverse side, ${state.honorific}.`);
+      sousChef.stepIdx = 0;
+      speakSousChef(sousChef.steps[0]);
+      return;
+    }
+
+    if (/\b(next step|next|forward)\b/i.test(cmd)) {
+      if (!sousChef.steps.length) return speakSousChef(`I find no numbered steps on the reverse side, ${state.honorific}.`);
+      if (sousChef.stepIdx < sousChef.steps.length - 1) {
+        sousChef.stepIdx++;
+        speakSousChef(sousChef.steps[sousChef.stepIdx]);
+      } else {
+        speakSousChef(`That is the final step, ${state.honorific}. The dish is completed.`);
+      }
+      return;
+    }
+
+    if (/\b(previous step|previous|go back)\b/i.test(cmd)) {
+      if (!sousChef.steps.length) return speakSousChef(`I find no numbered steps on the reverse side, ${state.honorific}.`);
+      if (sousChef.stepIdx > 0) {
+        sousChef.stepIdx--;
+        speakSousChef(sousChef.steps[sousChef.stepIdx]);
+      } else {
+        speakSousChef(`We are already at the first step, ${state.honorific}: ${sousChef.steps[0]}`);
+      }
+      return;
+    }
+
+    if (/\b(repeat|again|say that again)\b/i.test(cmd)) {
+      const idx = Math.max(0, sousChef.stepIdx);
+      speakSousChef(sousChef.steps[idx] || `I have not yet begun reading steps, ${state.honorific}.`);
+      return;
+    }
+
+    // Fallback guidance
+    speakSousChef(`Pardon me, ${state.honorific}. You may say "first step", "next step", "repeat", or inquire of the ingredients.`);
+  }
+
+  function toggleSousChef(recipeText) {
+    if (sousChef.active) {
+      stopSousChef();
+      return;
+    }
+    const { front, back } = partitionRecipeSides(recipeText);
+    sousChef.ingredients = front
+      .split('\n')
+      .map(l => l.replace(/^[*-•\s]+/, '').trim())
+      .filter(l => l && !/^(ingredients|yield|notes)/i.test(l));
+
+    sousChef.steps = back
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => /^\d+\./.test(l));
+
+    sousChef.stepIdx = -1;
+    sousChef.ingredientIdx = -1;
+    sousChef.active = true;
+
+    document.querySelectorAll('.recipe-mic-btn').forEach(btn => {
+      btn.classList.add('listening');
+      btn.title = 'Jeeves is listening — click to dismiss';
+    });
+
+    speakSousChef(`At your service in the kitchen, ${state.honorific}. Shall I read the ingredients, or proceed to the first step?`);
+  }
+
+  function partitionRecipeSides(text = '') {
+    const splitRegex = /\b(instructions|directions|method|preparation|to assemble|to prepare)\b[:\n]/i;
+    const match = text.search(splitRegex);
+    if (match > 30) {
+      return { front: text.slice(0, match).trim(), back: text.slice(match).trim() };
+    }
+    const lines = text.split('\n');
+    if (lines.length > 10) {
+      const mid = Math.ceil(lines.length / 2);
+      return { front: lines.slice(0, mid).join('\n'), back: '(Continued from front)\n\n' + lines.slice(mid).join('\n') };
+    }
+    return { front: text, back: 'No additional preparation notes recorded.' };
+  }
+
+  function renderRecipeBox(searchTerm = '', activeCategory = 'all', cardIdx = 0) {
+    harvestNotesAndRecipes();
     ensureArchiveTabs();
     if (!archiveContent) return;
-    archiveContent.innerHTML = `
-      <div class="archive-panel-toolbar">
-        <input type="text" id="search-recipes" placeholder="Search the Recipe Box…" aria-label="Search Recipe Box">
+    archiveContent.innerHTML = '';
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'archive-panel-toolbar';
+    toolbar.innerHTML = `
+      <input type="text" id="search-recipes" placeholder="Search culinary recipes & potions…" aria-label="Search Recipe Box" value="${escapeHtml(searchTerm)}">
+    `;
+    archiveContent.appendChild(toolbar);
+
+    const categories = [
+      { id: 'all', label: 'All Cards' },
+      { id: 'beverages', label: 'Beverages & Potions' },
+      { id: 'mains', label: 'Mains & Savouries' },
+      { id: 'breakfast', label: 'Breakfast Provisions' },
+      { id: 'desserts', label: 'Sweets & Desserts' }
+    ];
+
+    const catBar = document.createElement('div');
+    catBar.className = 'recipe-categories';
+    categories.forEach(cat => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `recipe-cat-btn ${activeCategory === cat.id ? 'active' : ''}`;
+      btn.textContent = cat.label;
+      btn.onclick = () => renderRecipeBox(searchTerm, cat.id, 0);
+      catBar.appendChild(btn);
+    });
+    archiveContent.appendChild(catBar);
+
+    const term = searchTerm.toLowerCase().trim();
+    const recipes = state.recipes.filter(r => {
+      const matchesCat = activeCategory === 'all' || r.category === activeCategory;
+      const matchesTerm = !term || r.title.toLowerCase().includes(term) || r.text.toLowerCase().includes(term);
+      return matchesCat && matchesTerm;
+    });
+
+    if (!recipes.length) {
+      const emptyMsg = document.createElement('div');
+      emptyMsg.style.cssText = 'text-align:center; padding:50px 20px; color:var(--mist); font-family:var(--font-display); font-size:18px;';
+      emptyMsg.innerHTML = term || activeCategory !== 'all'
+        ? `<em>No recipe cards found under these criteria, ${escapeHtml(state.honorific)}.</em>`
+        : `<em>The Recipe Box is currently empty, ${escapeHtml(state.honorific)}. Recipes shared in Culinary Advice mode will be filed here automatically.</em>`;
+      archiveContent.appendChild(emptyMsg);
+      archiveOverlay.classList.add('open');
+      toolbar.querySelector('#search-recipes')?.focus();
+      return;
+    }
+
+        const currentIdx = Math.max(0, Math.min(cardIdx, recipes.length - 1));
+    const recipe = recipes[currentIdx];
+    if (recipe && (recipe.title === 'Culinary Creation' || recipe.title.toLowerCase().startsWith('ingredient'))) {
+      inferRecipeTitleWithAI(recipe);
+    }
+
+    const boxWrap = document.createElement('div');
+    boxWrap.className = 'recipe-box-wrap';
+
+    // Deck Navigation Controls placed above the card
+    const navBar = document.createElement('div');
+    navBar.className = 'recipe-deck-nav';
+    navBar.style.cssText = 'display:flex; align-items:center; gap:12px; margin-bottom:12px; z-index:5;';
+    navBar.innerHTML = `
+      <button type="button" class="recipe-nav-btn" id="recipe-prev" ${currentIdx === 0 ? 'disabled' : ''}>← Previous Card</button>
+      <span style="font-size:12px; font-weight:600; color:var(--ink);">${currentIdx + 1} / ${recipes.length}</span>
+      <button type="button" class="recipe-nav-btn" id="recipe-next" ${currentIdx === recipes.length - 1 ? 'disabled' : ''}>Next Card →</button>`;
+    boxWrap.appendChild(navBar);
+
+    const stage = document.createElement('div');
+    stage.className = 'recipe-deck-stage';
+
+    const card = document.createElement('div');
+    card.className = 'recipe-index-card';
+
+    const catOptions = categories
+      .filter(c => c.id !== 'all')
+      .map(c => `<option value="${c.id}" ${recipe.category === c.id ? 'selected' : ''}>${c.label}</option>`)
+      .join('');
+
+    const { front: frontText, back: backText } = partitionRecipeSides(recipe.text);
+
+    card.innerHTML = `
+      <!-- FRONT FACE -->
+      <div class="recipe-card-face front">
+        <button type="button" class="recipe-edge-flip-btn left" aria-label="flip card left">↶</button>
+        <button type="button" class="recipe-edge-flip-btn right" aria-label="flip card right">↷</button>
+        <div class="recipe-card-top-bar">
+          <input type="text" class="recipe-title-input" value="${escapeHtml(recipe.title)}" title="Click to edit title" aria-label="Recipe title">
+          <button type="button" class="recipe-mic-btn" title="Ask Jeeves to guide preparation hands-free" aria-label="Sous Chef Assistant">${ICON_MIC}</button>
+          <select class="recipe-cat-select" title="Re-categorize dish">${catOptions}</select>
+          <button type="button" class="recipe-discard-btn" title="Discard recipe">✕</button>
+        </div>
+        <div class="recipe-card-body">${escapeHtml(frontText)}</div>
+        <div class="recipe-card-footer">
+          <span>${new Date(recipe.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+          <button type="button" class="copy-recipe-btn archive-btn" style="padding:2px 8px; font-size:11px;">Copy Recipe</button>
+          <span>Card ${currentIdx + 1} of ${recipes.length} (Front)</span>
+        </div>
       </div>
-      <div style="text-align:center; padding:40px 20px; color:var(--mist); font-family:var(--font-display); font-size:18px;">
-        <em>Jeeves' Recipe Box is being organized…</em>
+
+      <!-- BACK FACE -->
+      <div class="recipe-card-face back">
+        <button type="button" class="recipe-edge-flip-btn left" aria-label="flip card left">↶</button>
+        <button type="button" class="recipe-edge-flip-btn right" aria-label="flip card right">↷</button>
+        <div class="recipe-card-top-bar">
+          <span style="font-family:var(--font-display); font-size:17px; font-weight:700; color:#2b1708; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(recipe.title)} <small style="font-size:12px; font-weight:normal; opacity:0.75;">(Method)</small></span>
+          <button type="button" class="recipe-mic-btn" title="Ask Jeeves to guide preparation hands-free" aria-label="Sous Chef Assistant">${ICON_MIC}</button>
+          <button type="button" class="recipe-discard-btn" title="Discard recipe">✕</button>
+        </div>
+
+        <div class="recipe-card-body">${escapeHtml(backText)}</div>
+        <div class="recipe-card-footer">
+          <span>Card ${currentIdx + 1} of ${recipes.length} (Back)</span>
+          <button type="button" class="copy-recipe-btn archive-btn" style="padding:2px 8px; font-size:11px;">Copy Recipe</button>
+        </div>
       </div>
     `;
+
+    // Edge Flip Handlers
+    card.querySelectorAll('.recipe-edge-flip-btn.left').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        card.classList.remove('flipped-right');
+        card.classList.toggle('flipped-left');
+      };
+    });
+    card.querySelectorAll('.recipe-edge-flip-btn.right').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        card.classList.remove('flipped-left');
+        card.classList.toggle('flipped-right');
+      };
+    });
+
+    // Sous Chef Microphone Toggle
+    card.querySelectorAll('.recipe-mic-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        toggleSousChef(recipe.text);
+      };
+    });
+
+    // Save Title Modifications on Edit
+    const titleInput = card.querySelector('.recipe-title-input');
+    const saveTitle = () => {
+      const val = titleInput.value.trim();
+      if (val && val !== recipe.title) {
+        recipe.title = val;
+        try { localStorage.setItem(LS_KEY_RECIPES, JSON.stringify(state.recipes)); } catch(e){}
+      }
+    };
+    titleInput.addEventListener('blur', saveTitle);
+    titleInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); titleInput.blur(); }
+    });
+
+    // Save Category Modifications on Change
+    card.querySelector('.recipe-cat-select')?.addEventListener('change', (e) => {
+      recipe.category = e.target.value;
+      try { localStorage.setItem(LS_KEY_RECIPES, JSON.stringify(state.recipes)); } catch(err){}
+      renderRecipeBox(searchTerm, activeCategory, currentIdx);
+    });
+
+    // Copy Handler on Front & Back
+    card.querySelectorAll('.copy-recipe-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(recipe.text).then(() => {
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Copy Recipe'; }, 1500);
+        });
+      };
+    });
+
+    // Discard Handler on Front & Back
+    card.querySelectorAll('.recipe-discard-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        if (confirm(`Discard "${recipe.title}" from the Recipe Box, ${state.honorific}?`)) {
+          state.deletedHarvestIds.push(recipe.id);
+          state.recipes = state.recipes.filter(r => r.id !== recipe.id);
+          try {
+            localStorage.setItem(LS_KEY_DELETED_HARVESTS, JSON.stringify(state.deletedHarvestIds));
+            localStorage.setItem(LS_KEY_RECIPES, JSON.stringify(state.recipes));
+          } catch(err){}
+          renderRecipeBox(searchTerm, activeCategory, Math.max(0, currentIdx - 1));
+        }
+      };
+    });
+
+    card.querySelector('.copy-recipe-btn').onclick = (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(recipe.text).then(() => {
+        e.target.textContent = 'Copied!';
+        setTimeout(() => { e.target.textContent = 'Copy Recipe'; }, 1500);
+      });
+    };
+
+    card.querySelector('.recipe-discard-btn').onclick = (e) => {
+      e.stopPropagation();
+      if (confirm(`Discard "${recipe.title}" from the Recipe Box, ${state.honorific}?`)) {
+        state.deletedHarvestIds.push(recipe.id);
+        state.recipes = state.recipes.filter(r => r.id !== recipe.id);
+        try {
+          localStorage.setItem(LS_KEY_DELETED_HARVESTS, JSON.stringify(state.deletedHarvestIds));
+          localStorage.setItem(LS_KEY_RECIPES, JSON.stringify(state.recipes));
+        } catch(err){}
+        renderRecipeBox(searchTerm, activeCategory, Math.max(0, currentIdx - 1));
+      }
+    };
+
+    stage.appendChild(card);
+    boxWrap.appendChild(stage);
+
+    navBar.querySelector('#recipe-prev')?.addEventListener('click', () => {
+      stopSousChef();
+      if (currentIdx > 0) {
+        card.style.transform = 'translateX(-40px) rotate(-4deg)';
+        card.style.opacity = '0';
+        setTimeout(() => renderRecipeBox(searchTerm, activeCategory, currentIdx - 1), 180);
+      }
+    });
+
+    navBar.querySelector('#recipe-next')?.addEventListener('click', () => {
+      stopSousChef();
+      if (currentIdx < recipes.length - 1) {
+        card.style.transform = 'translateX(40px) rotate(4deg)';
+        card.style.opacity = '0';
+        setTimeout(() => renderRecipeBox(searchTerm, activeCategory, currentIdx + 1), 180);
+      }
+    });
+
+    archiveContent.appendChild(boxWrap);
+
+    const searchInput = toolbar.querySelector('#search-recipes');
+    searchInput?.addEventListener('input', (e) => {
+      renderRecipeBox(e.target.value, activeCategory, 0);
+    });
+    if (searchInput && searchTerm) {
+      searchInput.focus();
+      searchInput.setSelectionRange(searchTerm.length, searchTerm.length);
+    }
+
     archiveOverlay.classList.add('open');
+
   }
 
   async function preloadStoryText(story) {
