@@ -752,6 +752,80 @@ header.letterhead{
     cursor: not-allowed;
   }
 
+  /* Compact Archive Header for Short Viewports & Mobile Landscape */
+  @media (orientation: landscape) and (max-height: 520px), (max-width: 900px) and (max-height: 520px) {
+    /* Compress the outer modal box padding */
+    .modal-content,
+    .archive-modal-content,
+    .archives-dialog,
+    #archives-modal > div {
+      padding: 6px 14px 4px !important;
+    }
+
+    /* Target the top title row: shrink or hide the 'Archives' heading text */
+    .modal-header h1,
+    .modal-header h2,
+    .archive-header h1,
+    .archive-header h2,
+    .archives-header h1,
+    .archives-header h2,
+    .archive-title {
+      font-size: 15px !important;
+      margin: 0 !important;
+      line-height: 1 !important;
+    }
+
+    /* Align close button and tabs into minimal vertical footprint */
+    .modal-header,
+    .archive-header,
+    .archives-header {
+      padding: 0 0 2px 0 !important;
+      margin: 0 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      min-height: auto !important;
+    }
+
+    /* Slim down the tab bar strip and individual tabs */
+    .archive-tabs,
+    .archives-tabs,
+    .tab-bar,
+    .nav-tabs {
+      margin: 0 0 4px 0 !important;
+      padding: 0 !important;
+      gap: 4px !important;
+    }
+
+    .archive-tabs button,
+    .archives-tabs button,
+    .tab-bar button,
+    .nav-tabs button {
+      padding: 3px 8px !important;
+      font-size: 11px !important;
+      line-height: 1.2 !important;
+    }
+
+    /* Give the card full available viewport height */
+    .recipe-deck-stage {
+      margin: 0 auto !important;
+    }
+    .recipe-index-card {
+      min-height: auto !important;
+      height: calc(100vh - 90px) !important;
+      max-height: calc(100vh - 90px) !important;
+      aspect-ratio: unset !important;
+    }
+    .recipe-card-face {
+      padding: 4px 14px 4px !important;
+      background-position: 0 0, 0 30px !important;
+    }
+    .recipe-card-body {
+      font-size: 11px !important;
+      line-height: 1.28 !important;
+    }
+  }
+
   .recipe-deck-stage {
     position: relative;
     width: 100%;
