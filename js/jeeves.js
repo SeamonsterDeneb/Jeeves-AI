@@ -1399,8 +1399,12 @@
         .replace(/&rdquo;|&#8221;|”/gi, ', ')
         .replace(/"([^"\n]+)"/g, ', $1, ');
 
+      // Convert parentheticals into soft pauses and strip rogue brackets so TTS engines do not misinterpret them as stage directions
+      cleanText = cleanText.replace(/\(([^)\n]+)\)/g, ', $1, ').replace(/[()]/g, '');
+
       // Normalize multiple commas and punctuation collisions
       cleanText = cleanText.replace(/\s*,\s*,+/g, ', ').replace(/,\s*([.?!])/g, '$1').replace(/\s{2,}/g, ' ');
+
 
     cleanText = cleanText.replace(/&mdash;|—/g, '. ');
     cleanText = cleanText.replace(/&[a-z0-9#]+;/gi, ' ');
@@ -3276,6 +3280,7 @@ async function submitUserSuggestion() {
 
   const sousChef = {
     active: false,
+    awaiting: null, // 'ingredients' | 'instructions'
     stepIdx: -1,
     ingredientIdx: -1,
     steps: [],
@@ -3288,6 +3293,7 @@ async function submitUserSuggestion() {
     if (sousChef.recognition) {
       try { sousChef.recognition.abort(); } catch(e){}
     }
+    ttsAudio.pause();
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     document.querySelectorAll('.recipe-mic-btn').forEach(btn => {
       btn.classList.remove('listening');
@@ -3295,18 +3301,54 @@ async function submitUserSuggestion() {
     });
   }
 
+  async function speakSousChef(phrase) {
+    if (!phrase) return;
+    if (sousChef.recognition) {
+      try { sousChef.recognition.abort(); } catch(e){}
+    }
+    ttsAudio.pause();
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    unlockAudio();
 
-  function speakSousChef(phrase) {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(phrase);
-    utterance.rate = 1.0;
-    utterance.pitch = 0.95;
-    utterance.onend = () => {
-      if (sousChef.active) listenSousChef();
-    };
-    window.speechSynthesis.speak(utterance);
+    const cleanText = sanitizeForSpeech(phrase);
+    let playedCloud = false;
+
+    if (getTtsQuota() < 980000) {
+      try {
+        const audioUrl = await fetchTtsBlobUrl(cleanText, 0, 1.0);
+        if (audioUrl) {
+          await new Promise((resolve) => {
+            ttsAudio.src = audioUrl;
+            ttsAudio.playbackRate = state.ttsRate || 1.0;
+            ttsAudio.onended = resolve;
+            ttsAudio.onerror = resolve;
+            ttsAudio.play().catch(resolve);
+          });
+          playedCloud = true;
+        }
+      } catch (err) {
+        console.warn("Sous chef cloud audio encountered a hitch, falling back:", err);
+      }
+    }
+
+    if (!playedCloud && 'speechSynthesis' in window) {
+      await new Promise((resolve) => {
+        const u = new SpeechSynthesisUtterance(cleanText);
+        const voice = getJeevesVoice();
+        if (voice) u.voice = voice;
+        u.rate = state.ttsRate || 1.0;
+        u.pitch = 0.9;
+        u.onend = resolve;
+        u.onerror = resolve;
+        speechSynthesis.speak(u);
+      });
+    }
+
+    if (sousChef.active) {
+      listenSousChef();
+    }
   }
+
 
   function listenSousChef() {
     if (!sousChef.active) return;
@@ -3341,64 +3383,115 @@ async function submitUserSuggestion() {
     try { rec.start(); } catch(err){}
   }
 
+    function toggleSousChef(recipeText) {
+    if (sousChef.active) {
+      stopSousChef();
+      return;
+    }
+    const { front, back } = partitionRecipeSides(recipeText);
+
+    // Read every bulleted ingredient line directly, without regex parenthesis filtering
+    sousChef.ingredients = front
+      .split('\n')
+      .map(line => line.replace(/^\s*[-*•]+\s*/, '').trim())
+      .filter(line => line.length > 2 && !/^(ingredients|yield|servings|prep time|cook time|notes)[:\s]*$/i.test(line));
+
+    const rawSteps = back
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 3 && !/^(instructions|directions|method|preparation)[:\s]*$/i.test(line));
+
+    const numbered = rawSteps.filter(line => /^\d+\./.test(line));
+    sousChef.steps = numbered.length ? numbered : rawSteps;
+
+    sousChef.stepIdx = -1;
+    sousChef.ingredientIdx = -1;
+    sousChef.awaiting = 'ingredients';
+    sousChef.active = true;
+
+    document.querySelectorAll('.recipe-mic-btn').forEach(btn => {
+      btn.classList.add('listening');
+      btn.title = 'Jeeves is listening — click to dismiss';
+    });
+
+    speakSousChef(`At your service in the kitchen, ${state.honorific}. Shall I read you the ingredients?`);
+  }
+
   function handleSousChefCommand(cmd) {
     if (!cmd) return;
 
-    // Exit commands
-    if (/\b(thank you|stop|cancel|quiet|dismissed|that will be all|that is all)\b/i.test(cmd)) {
+    if (/\b(thank you|stop|cancel|quiet|dismissed|that will be all|that is all|exit|goodbye)\b/i.test(cmd)) {
       stopSousChef();
       speakSousChef(`Very good, ${state.honorific}. I shall leave you to your culinary arts.`);
       return;
     }
 
-    // Ingredient navigation
-    if (/\b(all ingredients|read (me )?(the )?ingredients|list ingredients)\b/i.test(cmd)) {
+    const isAffirmative = /\b(yes|yeah|sure|yep|please|certainly|indeed|read them|do so|go ahead)\b/i.test(cmd);
+    const isNegative = /\b(no|nope|nah|skip|pass|later)\b/i.test(cmd);
+
+    // Question 1: "Shall I read you the ingredients?"
+    if (sousChef.awaiting === 'ingredients') {
+      if (isAffirmative || /\bingredients?\b/i.test(cmd)) {
+        sousChef.awaiting = 'instructions';
+        if (!sousChef.ingredients.length) {
+          speakSousChef(`I find no ingredients listed on this card, ${state.honorific}. Would you like me to read you all the instructions at once now?`);
+        } else {
+          const list = sousChef.ingredients.join('. ');
+          speakSousChef(`The ingredients are: ${list}. Would you like me to read you all the instructions at once now?`);
+        }
+        return;
+      }
+      if (isNegative) {
+        sousChef.awaiting = 'instructions';
+        speakSousChef(`Very well. Would you like me to read you all the instructions at once now?`);
+        return;
+      }
+    }
+
+    // Question 2: "Would you like me to read you all the instructions at once now?"
+    if (sousChef.awaiting === 'instructions') {
+      if (isAffirmative || /\b(instructions?|method|directions?|all steps)\b/i.test(cmd)) {
+        sousChef.awaiting = null;
+        if (!sousChef.steps.length) {
+          speakSousChef(`I find no method steps listed on the reverse, ${state.honorific}.`);
+        } else {
+          const allSteps = sousChef.steps.join('. ');
+          speakSousChef(`The instructions are as follows: ${allSteps}. Whenever you are ready, you may say "first step" or "next step" to take them one by one.`);
+        }
+        return;
+      }
+      if (isNegative || /\b(step by step|one by one)\b/i.test(cmd)) {
+        sousChef.awaiting = null;
+        speakSousChef(`Understood, ${state.honorific}. Whenever you are ready to begin, simply say "first step".`);
+        return;
+      }
+    }
+
+    // Direct calls at any time
+    if (/\bingredients?\b/i.test(cmd)) {
       if (!sousChef.ingredients.length) {
         speakSousChef(`I find no ingredients listed on this card, ${state.honorific}.`);
       } else {
-        sousChef.ingredientIdx = 0;
-        speakSousChef(`The ingredients are: ${sousChef.ingredients.join(', ')}.`);
+        sousChef.awaiting = 'instructions';
+        const list = sousChef.ingredients.join('. ');
+        speakSousChef(`The ingredients are: ${list}. Would you like me to read you all the instructions at once now?`);
       }
       return;
     }
 
-    if (/\b(first ingredient)\b/i.test(cmd)) {
-      if (!sousChef.ingredients.length) return speakSousChef(`No ingredients are recorded, ${state.honorific}.`);
-      sousChef.ingredientIdx = 0;
-      speakSousChef(`The first ingredient is: ${sousChef.ingredients[0]}.`);
-      return;
-    }
-
-    if (/\b(next ingredient)\b/i.test(cmd)) {
-      if (!sousChef.ingredients.length) return speakSousChef(`No ingredients are recorded, ${state.honorific}.`);
-      if (sousChef.ingredientIdx < sousChef.ingredients.length - 1) {
-        sousChef.ingredientIdx++;
-        speakSousChef(`Next: ${sousChef.ingredients[sousChef.ingredientIdx]}.`);
+    if (/\b(all instructions|instructions?|method|directions?|all steps)\b/i.test(cmd)) {
+      sousChef.awaiting = null;
+      if (!sousChef.steps.length) {
+        speakSousChef(`I find no instructions recorded on the reverse, ${state.honorific}.`);
       } else {
-        speakSousChef(`That was the final ingredient, ${state.honorific}.`);
+        const allSteps = sousChef.steps.join('. ');
+        speakSousChef(`The instructions are: ${allSteps}.`);
       }
       return;
     }
 
-    if (/\b(previous ingredient|back ingredient)\b/i.test(cmd)) {
-      if (!sousChef.ingredients.length) return speakSousChef(`No ingredients are recorded, ${state.honorific}.`);
-      if (sousChef.ingredientIdx > 0) {
-        sousChef.ingredientIdx--;
-        speakSousChef(`Previous: ${sousChef.ingredients[sousChef.ingredientIdx]}.`);
-      } else {
-        speakSousChef(`You are at the first ingredient: ${sousChef.ingredients[0]}.`);
-      }
-      return;
-    }
-
-    if (/\b(repeat ingredient|what was that ingredient)\b/i.test(cmd)) {
-      const idx = Math.max(0, sousChef.ingredientIdx);
-      speakSousChef(sousChef.ingredients[idx] || `No ingredients are available, ${state.honorific}.`);
-      return;
-    }
-
-    // Step navigation
     if (/\b(first step|begin|start)\b/i.test(cmd)) {
+      sousChef.awaiting = null;
       if (!sousChef.steps.length) return speakSousChef(`I find no numbered steps on the reverse side, ${state.honorific}.`);
       sousChef.stepIdx = 0;
       speakSousChef(sousChef.steps[0]);
@@ -3406,6 +3499,7 @@ async function submitUserSuggestion() {
     }
 
     if (/\b(next step|next|forward)\b/i.test(cmd)) {
+      sousChef.awaiting = null;
       if (!sousChef.steps.length) return speakSousChef(`I find no numbered steps on the reverse side, ${state.honorific}.`);
       if (sousChef.stepIdx < sousChef.steps.length - 1) {
         sousChef.stepIdx++;
@@ -3417,6 +3511,7 @@ async function submitUserSuggestion() {
     }
 
     if (/\b(previous step|previous|go back)\b/i.test(cmd)) {
+      sousChef.awaiting = null;
       if (!sousChef.steps.length) return speakSousChef(`I find no numbered steps on the reverse side, ${state.honorific}.`);
       if (sousChef.stepIdx > 0) {
         sousChef.stepIdx--;
@@ -3427,42 +3522,14 @@ async function submitUserSuggestion() {
       return;
     }
 
-    if (/\b(repeat|again|say that again)\b/i.test(cmd)) {
+        if (/\b(repeat|again|say that again)\b/i.test(cmd)) {
       const idx = Math.max(0, sousChef.stepIdx);
       speakSousChef(sousChef.steps[idx] || `I have not yet begun reading steps, ${state.honorific}.`);
       return;
     }
 
-    // Fallback guidance
-    speakSousChef(`Pardon me, ${state.honorific}. You may say "first step", "next step", "repeat", or inquire of the ingredients.`);
-  }
-
-  function toggleSousChef(recipeText) {
-    if (sousChef.active) {
-      stopSousChef();
-      return;
-    }
-    const { front, back } = partitionRecipeSides(recipeText);
-    sousChef.ingredients = front
-      .split('\n')
-      .map(l => l.replace(/^[*-•\s]+/, '').trim())
-      .filter(l => l && !/^(ingredients|yield|notes)/i.test(l));
-
-    sousChef.steps = back
-      .split('\n')
-      .map(l => l.trim())
-      .filter(l => /^\d+\./.test(l));
-
-    sousChef.stepIdx = -1;
-    sousChef.ingredientIdx = -1;
-    sousChef.active = true;
-
-    document.querySelectorAll('.recipe-mic-btn').forEach(btn => {
-      btn.classList.add('listening');
-      btn.title = 'Jeeves is listening — click to dismiss';
-    });
-
-    speakSousChef(`At your service in the kitchen, ${state.honorific}. Shall I read the ingredients, or proceed to the first step?`);
+    // Ignore ambient conversation silently; the onend listener will keep awaiting instructions
+    return;
   }
 
   function partitionRecipeSides(text = '') {
