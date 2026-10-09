@@ -3301,8 +3301,42 @@ async function submitUserSuggestion() {
     });
   }
 
+  const sousChefAcks = { honorific: null, urls: [], idx: 0 };
+
+  function preloadSousChefAcks() {
+    const h = state.honorific;
+    if (sousChefAcks.honorific === h && sousChefAcks.urls.length) return;
+    sousChefAcks.honorific = h;
+    sousChefAcks.urls = [];
+    sousChefAcks.idx = 0;
+    if (getTtsQuota() >= 980000) return;
+    [
+      `Very good.`,
+      `Certainly.`,
+      `Right away.`,
+      `Yes.`,
+      `Indeed.`
+    ].forEach(phrase => {
+      fetchTtsBlobUrl(sanitizeForSpeech(phrase), 0, 1.0).then(url => {
+        if (url && sousChefAcks.honorific === h) sousChefAcks.urls.push(url);
+      });
+    });
+  }
+
+  function playSousChefClip(url) {
+    return new Promise((resolve) => {
+      ttsAudio.src = url;
+      ttsAudio.playbackRate = state.ttsRate || 1.0;
+      ttsAudio.onended = resolve;
+      ttsAudio.onerror = resolve;
+      ttsAudio.play().catch(resolve);
+    });
+  }
+
   async function speakSousChef(phrase) {
     if (!phrase) return;
+    const wantAck = sousChef.ackPending;
+    sousChef.ackPending = false;
     if (sousChef.recognition) {
       try { sousChef.recognition.abort(); } catch(e){}
     }
@@ -3315,15 +3349,15 @@ async function submitUserSuggestion() {
 
     if (getTtsQuota() < 980000) {
       try {
-        const audioUrl = await fetchTtsBlobUrl(cleanText, 0, 1.0);
+        // Start fetching the real audio straight away, so it loads while the acknowledgement plays
+        const audioPromise = fetchTtsBlobUrl(cleanText, 0, 1.0);
+        if (wantAck && sousChefAcks.urls.length) {
+          const ackUrl = sousChefAcks.urls[sousChefAcks.idx++ % sousChefAcks.urls.length];
+          await playSousChefClip(ackUrl);
+        }
+        const audioUrl = await audioPromise;
         if (audioUrl) {
-          await new Promise((resolve) => {
-            ttsAudio.src = audioUrl;
-            ttsAudio.playbackRate = state.ttsRate || 1.0;
-            ttsAudio.onended = resolve;
-            ttsAudio.onerror = resolve;
-            ttsAudio.play().catch(resolve);
-          });
+          await playSousChefClip(audioUrl);
           playedCloud = true;
         }
       } catch (err) {
@@ -3415,6 +3449,7 @@ async function submitUserSuggestion() {
     });
 
     speakSousChef(`At your service in the kitchen, ${state.honorific}. Shall I read you the ingredients?`);
+    preloadSousChefAcks();
   }
 
   function handleSousChefCommand(cmd) {
@@ -3428,6 +3463,10 @@ async function submitUserSuggestion() {
 
     const isAffirmative = /\b(yes|yeah|sure|yep|please|certainly|indeed|read them|do so|go ahead)\b/i.test(cmd);
     const isNegative = /\b(no|nope|nah|skip|pass|later)\b/i.test(cmd);
+
+    // Commands that lead to a wait get a quick spoken acknowledgement first
+    sousChef.ackPending = /\b(first step|begin|start|next|forward|previous|go back|repeat|again|ingredients?|instructions?|method|directions?|all steps)\b/i.test(cmd)
+      || (!!sousChef.awaiting && (isAffirmative || isNegative));
 
     // Question 1: "Shall I read you the ingredients?"
     if (sousChef.awaiting === 'ingredients') {
