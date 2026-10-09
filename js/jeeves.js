@@ -3098,6 +3098,23 @@ async function submitUserSuggestion() {
   let activeBookFlip = null;
 
 
+  // Escapes text for display and wraps every occurrence of the search term in <mark>
+  function highlightMatches(text, term) {
+    text = text || '';
+    const t = (term || '').trim();
+    if (!t) return escapeHtml(text);
+    const re = new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    let out = '';
+    let last = 0;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      out += escapeHtml(text.slice(last, m.index))
+        + `<mark style="background:#f2d36b; color:inherit; padding:0 1px; border-radius:2px;">${escapeHtml(m[0])}</mark>`;
+      last = m.index + m[0].length;
+    }
+    return out + escapeHtml(text.slice(last));
+  }
+
   function renderBookOfJeeves(searchTerm = '', targetPageIndex = 0) {
     harvestNotesAndRecipes();
     if (!archiveContent) return;
@@ -3107,8 +3124,17 @@ async function submitUserSuggestion() {
     toolbar.className = 'archive-panel-toolbar';
     toolbar.innerHTML = `
       <input type="text" id="search-book" placeholder="Search the Book of Jeeves…" aria-label="Search Book of Jeeves" value="${escapeHtml(searchTerm)}">
+      <button id="search-book-btn" class="archive-btn" type="button" title="Search" style="padding:7px 12px;">🔍</button>
     `;
     archiveContent.appendChild(toolbar);
+
+    // Search runs only on Enter or the search button, not on every keystroke
+    const bookSearchInput = toolbar.querySelector('#search-book');
+    const runBookSearch = () => renderBookOfJeeves(bookSearchInput.value);
+    bookSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); runBookSearch(); }
+    });
+    toolbar.querySelector('#search-book-btn').addEventListener('click', runBookSearch);
 
     const term = searchTerm.toLowerCase().trim();
     const notes = state.bookNotes.filter(n => !term || n.title.toLowerCase().includes(term) || n.text.toLowerCase().includes(term));
@@ -3148,15 +3174,15 @@ async function submitUserSuggestion() {
       page.dataset.id = note.id;
 
       const titleDisplay = leafIndex === 0
-        ? escapeHtml(note.title)
-        : `${escapeHtml(note.title)} <small style="font-size:12px; font-weight:normal; opacity:0.75;">(cont.)</small>`;
+        ? highlightMatches(note.title, searchTerm)
+        : `${highlightMatches(note.title, searchTerm)} <small style="font-size:12px; font-weight:normal; opacity:0.75;">(cont.)</small>`;
 
       page.innerHTML = `
         <div class="book-page-header">
           <span class="book-page-title">${titleDisplay}</span>
           <button type="button" class="delete-note-btn" title="Discard note" style="background:transparent; border:none; color:var(--claret); cursor:pointer; font-size:13px; padding:0 4px;">✕</button>
         </div>
-        <div class="book-page-body">${escapeHtml(leafText)}</div>
+        <div class="book-page-body">${highlightMatches(leafText, searchTerm)}</div>
         <div class="book-page-footer">
           <span>${new Date(note.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>
           <button type="button" class="copy-note-btn archive-btn" style="padding:2px 8px; font-size:11px;">Copy All</button>
@@ -3217,7 +3243,15 @@ async function submitUserSuggestion() {
       setTimeout(() => {
         try {
           if (activeBookFlip) activeBookFlip.destroy();
-          const safeStartPage = Math.min(targetPageIndex, Math.max(0, flattenedPages.length - 1));
+          // When searching, open on the first page that contains the term
+          let wantedPage = targetPageIndex;
+          if (term && targetPageIndex === 0) {
+            const hit = flattenedPages.findIndex(p =>
+              p.leafText.toLowerCase().includes(term) ||
+              (p.leafIndex === 0 && p.note.title.toLowerCase().includes(term)));
+            if (hit > 0) wantedPage = hit;
+          }
+          const safeStartPage = Math.min(wantedPage, Math.max(0, flattenedPages.length - 1));
           activeBookFlip = new window.St.PageFlip(bookEl, {
             width: pageWidth,
             height: pageHeight,
@@ -3240,13 +3274,8 @@ async function submitUserSuggestion() {
       }, 50);
     }
 
-    toolbar.querySelector('#search-book')?.addEventListener('input', (e) => {
-      renderBookOfJeeves(e.target.value);
-    });
-
     archiveOverlay.classList.add('open');
   }
-
   async function inferRecipeTitleWithAI(recipe) {
     if (!recipe || !state.apiKey || (recipe.title && recipe.title !== 'Culinary Creation' && !recipe.title.toLowerCase().startsWith('ingredient'))) return;
     try {
@@ -3595,8 +3624,17 @@ async function submitUserSuggestion() {
     toolbar.className = 'archive-panel-toolbar';
     toolbar.innerHTML = `
       <input type="text" id="search-recipes" placeholder="Search culinary recipes & potions…" aria-label="Search Recipe Box" value="${escapeHtml(searchTerm)}">
+      <button id="search-recipes-btn" class="archive-btn" type="button" title="Search" style="padding:7px 12px;">🔍</button>
     `;
     archiveContent.appendChild(toolbar);
+
+    // Search runs only on Enter or the search button, not on every keystroke
+    const recipeSearchInput = toolbar.querySelector('#search-recipes');
+    const runRecipeSearch = () => renderRecipeBox(recipeSearchInput.value, activeCategory, 0);
+    recipeSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); runRecipeSearch(); }
+    });
+    toolbar.querySelector('#search-recipes-btn').addEventListener('click', runRecipeSearch);
 
     const categories = [
       { id: 'all', label: 'All Cards' },
@@ -3680,7 +3718,7 @@ async function submitUserSuggestion() {
           <select class="recipe-cat-select" title="Re-categorize dish">${catOptions}</select>
           <button type="button" class="recipe-discard-btn" title="Discard recipe">✕</button>
         </div>
-        <div class="recipe-card-body">${escapeHtml(frontText)}</div>
+        <div class="recipe-card-body">${highlightMatches(frontText, searchTerm)}</div>
         <div class="recipe-card-footer">
           <span>${new Date(recipe.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>
           <button type="button" class="copy-recipe-btn archive-btn" style="padding:2px 8px; font-size:11px;">Copy Recipe</button>
@@ -3693,12 +3731,12 @@ async function submitUserSuggestion() {
         <button type="button" class="recipe-edge-flip-btn left" aria-label="flip card left">↶</button>
         <button type="button" class="recipe-edge-flip-btn right" aria-label="flip card right">↷</button>
         <div class="recipe-card-top-bar">
-          <span style="font-family:var(--font-display); font-size:17px; font-weight:700; color:#2b1708; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(recipe.title)} <small style="font-size:12px; font-weight:normal; opacity:0.75;">(Method)</small></span>
+          <span style="font-family:var(--font-display); font-size:17px; font-weight:700; color:#2b1708; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${highlightMatches(recipe.title, searchTerm)} <small style="font-size:12px; font-weight:normal; opacity:0.75;">(Method)</small></span>
           <button type="button" class="recipe-mic-btn" title="Ask Jeeves to guide preparation hands-free" aria-label="Sous Chef Assistant">${ICON_MIC}</button>
           <button type="button" class="recipe-discard-btn" title="Discard recipe">✕</button>
         </div>
 
-        <div class="recipe-card-body">${escapeHtml(backText)}</div>
+        <div class="recipe-card-body">${highlightMatches(backText, searchTerm)}</div>
         <div class="recipe-card-footer">
           <span>Card ${currentIdx + 1} of ${recipes.length} (Back)</span>
           <button type="button" class="copy-recipe-btn archive-btn" style="padding:2px 8px; font-size:11px;">Copy Recipe</button>
@@ -3821,15 +3859,6 @@ async function submitUserSuggestion() {
     });
 
     archiveContent.appendChild(boxWrap);
-
-    const searchInput = toolbar.querySelector('#search-recipes');
-    searchInput?.addEventListener('input', (e) => {
-      renderRecipeBox(e.target.value, activeCategory, 0);
-    });
-    if (searchInput && searchTerm) {
-      searchInput.focus();
-      searchInput.setSelectionRange(searchTerm.length, searchTerm.length);
-    }
 
     archiveOverlay.classList.add('open');
 
