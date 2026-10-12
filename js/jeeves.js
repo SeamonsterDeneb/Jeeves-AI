@@ -1518,7 +1518,7 @@
     stopListening();
     if (restart) state.readerProgress[story.id] = 0;
     JeevesReader.load(text, story.id);
-    showReaderBar(story.title);
+    openStoryBookModal(story);
     JeevesReader.play().then(updateReaderBar);
   }
 
@@ -2225,8 +2225,388 @@ function updateReaderBar() {
     const ppBtn = bar.querySelector('.reader-playpause-btn');
     if (ppBtn) ppBtn.innerHTML = JeevesReader.isPlaying ? ICON_PAUSE : ICON_PLAY;
   });
+
+  const readerOverlay = document.getElementById('story-book-reader-overlay');
+  if (readerOverlay && readerOverlay.classList.contains('open')) {
+    const slider = readerOverlay.querySelector('.reader-slider');
+    if (slider && !slider.dataset.dragging) {
+      slider.max = Math.max(total - 1, 0);
+      slider.value = idx;
+    }
+    const label = readerOverlay.querySelector('.reader-position');
+    if (label) label.textContent = `${Math.min(idx + 1, total)} / ${total}`;
+    const ppBtn = readerOverlay.querySelector('.reader-playpause-btn');
+    if (ppBtn) ppBtn.innerHTML = JeevesReader.isPlaying ? ICON_PAUSE : ICON_PLAY;
+    syncStoryBookHighlight(idx);
+  }
 }
 
+  let activeStoryBookFlip = null;
+  let storyLineToPageMap = [];
+
+  function openStoryBookModal(story) {
+    if (!story) return;
+
+    if (activeStoryBookFlip) {
+      try { activeStoryBookFlip.destroy(); } catch (e) {}
+      activeStoryBookFlip = null;
+    }
+
+    let overlay = document.getElementById('story-book-reader-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'story-book-reader-overlay';
+      overlay.innerHTML = `
+        <div class="story-reader-header">
+          <span class="story-reader-title" id="story-reader-title"></span>
+          <button type="button" class="icon-btn" id="close-story-reader" aria-label="Close Book" style="font-size:18px;">✕</button>
+        </div>
+        <div class="story-reader-stage">
+          <button type="button" class="story-reader-nav-btn prev sr-only" id="story-reader-prev" title="Previous page">⟵</button>
+          <div class="story-reader-flip" id="story-reader-flip"></div>
+          <button type="button" class="story-reader-nav-btn next sr-only" id="story-reader-next" title="Next page">⟶</button>
+        </div>
+        <div class="story-reader-controls" id="story-reader-controls-bar">
+          <button class="reader-back-btn reader-bar-btn" title="Back a line" type="button">⟲</button>
+          <button class="reader-playpause-btn reader-bar-btn" title="Play/Pause" type="button" aria-label="Play or pause">${ICON_PLAY}</button>
+          <input type="range" class="reader-slider" min="0" max="0" value="0" step="1">
+          <span class="reader-position reader-bar-label"></span>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+
+      overlay.querySelector('#close-story-reader').addEventListener('click', () => {
+        JeevesReader.pause();
+        if (activeStoryBookFlip) {
+          try { activeStoryBookFlip.destroy(); } catch (e) {}
+          activeStoryBookFlip = null;
+        }
+        overlay.classList.remove('open');
+      });
+
+      const bar = overlay.querySelector('#story-reader-controls-bar');
+      bar.querySelector('.reader-back-btn').addEventListener('click', () => JeevesReader.back(1));
+      bar.querySelector('.reader-playpause-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (JeevesReader.isPlaying) {
+          JeevesReader.pause();
+        } else if (JeevesReader.lines.length) {
+          unlockAudio();
+          JeevesReader.play().then(updateReaderBar);
+          updateReaderBar();
+        }
+      });
+      const slider = bar.querySelector('.reader-slider');
+      slider.addEventListener('input', () => {
+        slider.dataset.dragging = '1';
+        const val = parseInt(slider.value, 10);
+        document.querySelectorAll('.reader-bar, #story-reader-controls-bar').forEach(b => {
+          const lbl = b.querySelector('.reader-position');
+          if (lbl) lbl.textContent = `${val + 1} / ${JeevesReader.lines.length}`;
+        });
+      });
+      slider.addEventListener('change', () => {
+        delete slider.dataset.dragging;
+        JeevesReader.seekTo(parseInt(slider.value, 10));
+      });
+    }
+
+    overlay.querySelector('#story-reader-title').textContent = story.title;
+    const stageEl = overlay.querySelector('.story-reader-stage');
+    let bookEl = overlay.querySelector('#story-reader-flip');
+    if (!bookEl) {
+      bookEl = document.createElement('div');
+      bookEl.id = 'story-reader-flip';
+      bookEl.className = 'story-reader-flip';
+      const nextBtn = overlay.querySelector('#story-reader-next');
+      if (nextBtn) {
+        stageEl.insertBefore(bookEl, nextBtn);
+      } else {
+        stageEl.appendChild(bookEl);
+      }
+    }
+    bookEl.innerHTML = '';
+
+    const lines = JeevesReader.lines;
+    storyLineToPageMap = new Array(lines.length).fill(0);
+
+    function shouldStartNewParagraph(item, prevItem) {
+      if (!prevItem) return true;
+      if (/^["“]/.test(item.text)) return true;
+      if (item.speaker !== 'Bertie') return true;
+
+      const isAttribution = /^(said|replied|asked|answered|whispered|muttered|cried|shouted|murmured|inquired|enquired|echoed|gasped|sniffed|i\s+(said|replied|asked|murmured|cried|agreed|suggested))\b/i.test(item.text) || /^[a-z]/.test(item.text);
+      if (isAttribution) {
+        if (/["”][,.]?$/.test(prevItem.text) || prevItem.speaker !== 'Bertie') {
+          return false;
+        }
+      }
+      return prevItem.speaker === 'Bertie';
+    }
+
+    const isMobile = window.innerWidth <= 768;
+    const pWidth = isMobile ? Math.min(window.innerWidth - 32, 380) : Math.min(Math.floor((window.innerWidth - 80) / 2), 440);
+    const pHeight = isMobile ? Math.min(window.innerHeight - 170, 520) : Math.min(window.innerHeight - 180, 580);
+
+    overlay.classList.add('open');
+
+    // Parse items
+    const parsedItems = lines.map((raw, idx) => {
+      const parsed = JeevesReader.parseLine(raw);
+      const prevRaw = idx > 0 ? JeevesReader.parseLine(lines[idx - 1]) : null;
+      const isNewPara = shouldStartNewParagraph(parsed, prevRaw);
+      return { lineIdx: idx, speaker: parsed.speaker, text: parsed.text, isNewPara };
+    });
+
+    // Measurement stage
+    const measurePage = document.createElement('div');
+    measurePage.className = 'story-book-page';
+    measurePage.style.cssText = `position:absolute; visibility:hidden; pointer-events:none; left:-9999px; top:0; width:${pWidth}px; height:${pHeight}px;`;
+
+    const measureBody = document.createElement('div');
+    measureBody.className = 'story-page-body';
+    const measureFolio = document.createElement('div');
+    measureFolio.className = 'story-page-folio';
+    measureFolio.textContent = '— 1 —';
+    measurePage.appendChild(measureBody);
+    measurePage.appendChild(measureFolio);
+    overlay.appendChild(measurePage);
+
+    const pages = [];
+    let curPageItems = [];
+    let curParaEl = null;
+
+    function resetMeasure(isFirstPage = false) {
+      measureBody.innerHTML = '';
+      curParaEl = null;
+      if (isFirstPage) {
+        const titleEl = document.createElement('h1');
+        titleEl.className = 'story-first-page-title';
+        titleEl.textContent = story.title;
+        measureBody.appendChild(titleEl);
+      }
+    }
+
+    resetMeasure(true);
+
+    for (let i = 0; i < parsedItems.length; i++) {
+      const item = parsedItems[i];
+      let p = curParaEl;
+      let createdNewP = false;
+
+      if (!p || item.isNewPara) {
+        p = document.createElement('p');
+        if (curPageItems.length === 0 && !item.isNewPara) {
+          p.classList.add('p-continued');
+        }
+        measureBody.appendChild(p);
+        createdNewP = true;
+      }
+
+      const span = document.createElement('span');
+      span.className = 'book-sentence';
+      span.textContent = item.text + ' ';
+      p.appendChild(span);
+
+      // Check overflow
+      if (measureBody.scrollHeight > measureBody.clientHeight) {
+        span.remove();
+        if (createdNewP) p.remove();
+
+        // Attempt splitting item across word boundaries if it has multiple words
+        const words = item.text.split(' ');
+        let fitWordCount = 0;
+
+        if (words.length > 1) {
+          let testP = curParaEl;
+          if (!testP || item.isNewPara) {
+            testP = document.createElement('p');
+            if (curPageItems.length === 0 && !item.isNewPara) testP.classList.add('p-continued');
+            measureBody.appendChild(testP);
+          }
+          const testSpan = document.createElement('span');
+          testSpan.className = 'book-sentence';
+          testP.appendChild(testSpan);
+
+          for (let w = 1; w < words.length; w++) {
+            testSpan.textContent = words.slice(0, w).join(' ') + ' ';
+            if (measureBody.scrollHeight <= measureBody.clientHeight) {
+              fitWordCount = w;
+            } else {
+              break;
+            }
+          }
+          testSpan.remove();
+          if (!curParaEl && testP) testP.remove();
+        }
+
+        if (fitWordCount > 0) {
+          const fittedText = words.slice(0, fitWordCount).join(' ');
+          const remainingText = words.slice(fitWordCount).join(' ');
+
+          curPageItems.push({
+            lineIdx: item.lineIdx,
+            speaker: item.speaker,
+            text: fittedText,
+            isNewPara: item.isNewPara
+          });
+          pages.push(curPageItems);
+          curPageItems = [];
+          resetMeasure(false);
+
+          // Queue remaining words for next page
+          parsedItems[i] = {
+            lineIdx: item.lineIdx,
+            speaker: item.speaker,
+            text: remainingText,
+            isNewPara: false
+          };
+          i--;
+          continue;
+        }
+
+        if (curPageItems.length > 0) {
+          pages.push(curPageItems);
+          curPageItems = [];
+          resetMeasure(false);
+          i--;
+          continue;
+        }
+      }
+
+      curParaEl = p;
+      curPageItems.push(item);
+    }
+
+    if (curPageItems.length > 0) pages.push(curPageItems);
+    measurePage.remove();
+
+    pages.forEach((pageItems, pIdx) => {
+      const pageEl = document.createElement('div');
+      pageEl.className = 'story-book-page';
+      pageEl.dataset.pageIdx = pIdx;
+
+      const bodyEl = document.createElement('div');
+      bodyEl.className = 'story-page-body';
+
+      if (pIdx === 0) {
+        const titleEl = document.createElement('h1');
+        titleEl.className = 'story-first-page-title';
+        titleEl.textContent = story.title;
+        bodyEl.appendChild(titleEl);
+      }
+
+      let currentPara = null;
+
+      pageItems.forEach((item, itemIdx) => {
+        storyLineToPageMap[item.lineIdx] = pIdx;
+
+        if (!currentPara || item.isNewPara) {
+          currentPara = document.createElement('p');
+          if (itemIdx === 0 && !item.isNewPara) {
+            currentPara.classList.add('p-continued');
+          }
+          bodyEl.appendChild(currentPara);
+        }
+        const span = document.createElement('span');
+        span.className = 'book-sentence';
+        span.dataset.lineIdx = item.lineIdx;
+        span.textContent = item.text + ' ';
+        span.addEventListener('click', (e) => {
+          if (JeevesReader.isPlaying) {
+            e.stopPropagation();
+            unlockAudio();
+            JeevesReader.seekTo(item.lineIdx);
+          }
+        });
+        currentPara.appendChild(span);
+      });
+
+      // Tap on page turns forward or backward when paused
+      pageEl.addEventListener('click', (e) => {
+        if (JeevesReader.isPlaying && e.target.closest('.book-sentence')) return;
+        const rect = pageEl.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        if (clickX < rect.width * 0.35) {
+          activeStoryBookFlip?.flipPrev();
+        } else {
+          activeStoryBookFlip?.flipNext();
+        }
+      });
+
+      const folio = document.createElement('div');
+      folio.className = 'story-page-folio';
+      folio.textContent = `— ${pIdx + 1} —`;
+
+      pageEl.appendChild(bodyEl);
+      pageEl.appendChild(folio);
+      bookEl.appendChild(pageEl);
+    });
+
+    const initialLine = JeevesReader.currentIndex || 0;
+    const initialPage = storyLineToPageMap[initialLine] || 0;
+
+    // Blank temporary clones created on single-page backside turns
+    const genuinePages = new Set(bookEl.querySelectorAll('.story-book-page'));
+    const backObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === 1 && node.classList.contains('story-book-page') && !genuinePages.has(node)) {
+            node.classList.add('story-page-blank-back');
+          }
+        });
+      });
+    });
+    backObserver.observe(bookEl, { childList: true, subtree: true });
+
+    if (window.St && window.St.PageFlip) {
+      setTimeout(() => {
+        try {
+          activeStoryBookFlip = new window.St.PageFlip(bookEl, {
+            width: pWidth,
+            height: pHeight,
+            size: 'fixed',
+            startPage: initialPage,
+            showCover: false,
+            usePortrait: isMobile,
+            disableFlipByClick: true,
+            maxShadowOpacity: 0.25,
+            mobileScrollSupport: false
+          });
+        activeStoryBookFlip.loadFromHTML(bookEl.querySelectorAll('.story-book-page'));
+
+        overlay.querySelector('#story-reader-prev').onclick = () => activeStoryBookFlip.flipPrev();
+        overlay.querySelector('#story-reader-next').onclick = () => activeStoryBookFlip.flipNext();
+        syncStoryBookHighlight(initialLine);
+      } catch (e) {
+        console.warn('Story reader initialization skipped:', e);
+      }
+    }, 60);
+  }
+}
+
+function syncStoryBookHighlight(lineIdx) {
+  const overlay = document.getElementById('story-book-reader-overlay');
+  if (!overlay || !overlay.classList.contains('open')) return;
+
+  overlay.querySelectorAll('.book-sentence.active').forEach(el => el.classList.remove('active'));
+  const targetSpan = overlay.querySelector(`.book-sentence[data-line-idx="${lineIdx}"]`);
+  if (targetSpan) targetSpan.classList.add('active');
+
+  if (activeStoryBookFlip && storyLineToPageMap[lineIdx] !== undefined) {
+    const targetPage = storyLineToPageMap[lineIdx];
+    const curPage = activeStoryBookFlip.getCurrentPageIndex();
+    const isPortrait = activeStoryBookFlip.getOrientation() === 'portrait' || window.innerWidth <= 768;
+
+    if (isPortrait) {
+      if (curPage !== targetPage) activeStoryBookFlip.flip(targetPage);
+    } else {
+      if (targetPage < curPage || targetPage > curPage + 1) {
+        activeStoryBookFlip.flip(targetPage);
+      }
+    }
+  }
+}
 let kitchenSousChef = {
   active: false,
   stepIndex: 0,
@@ -4029,10 +4409,10 @@ ${numbered}`;
 
     function buildReviewRow(speaker, text) {
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; align-items:flex-start; background:var(--ink-deep);padding:8px; border-radius:8px; border:1px solid var(--hairline);';
+      row.className = 'review-row';
 
       const select = document.createElement('select');
-      select.style.cssText = 'width:125px; flex-shrink:0; font-size:12px; padding:6px; background:var(--ink-panel-2); color:var(--parchment); border:1px solid var(--hairline); border-radius:6px;';
+      select.className = 'review-speaker-select';
       speakers.forEach(spk => {
         const opt = document.createElement('option');
         opt.value = spk;
@@ -4044,16 +4424,24 @@ ${numbered}`;
       const input = document.createElement('textarea');
       input.rows = 1;
       input.value = text;
-      input.style.cssText = 'flex:1; font-size:13px; padding:6px 8px; background:var(--ink-panel-2); color:var(--parchment); border:1px solid var(--hairline); border-radius:6px; resize:none; overflow:hidden; font-family:var(--font-ui);';
+      input.className = 'review-line-text';
       input.oninput = () => fitTextarea(input);
 
-      const btnStyle = 'flex-shrink:0; width:26px; background:transparent; border:1px solid var(--hairline); color:var(--parchment); border-radius:6px; cursor:pointer; font-size:12px;';
+      const actions = document.createElement('div');
+      actions.className = 'review-row-actions';
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'review-action-btn';
+      delBtn.textContent = '✕';
+      delBtn.title = 'Delete this line';
+      delBtn.onclick = () => row.remove();
 
       const splitBtn = document.createElement('button');
       splitBtn.type = 'button';
+      splitBtn.className = 'review-action-btn';
       splitBtn.textContent = '✂';
       splitBtn.title = 'Split at cursor — carve off a misattributed narrator tag';
-      splitBtn.style.cssText = btnStyle;
       splitBtn.onclick = () => {
         const pos = input.selectionStart;
         const before = input.value.slice(0, pos).trim();
@@ -4066,17 +4454,12 @@ ${numbered}`;
         fitTextarea(newRow.querySelector('textarea'));
       };
 
-      const delBtn = document.createElement('button');
-      delBtn.type = 'button';
-      delBtn.textContent = '✕';
-      delBtn.title = 'Delete this line';
-      delBtn.style.cssText = btnStyle;
-      delBtn.onclick = () => row.remove();
+      actions.appendChild(delBtn);
+      actions.appendChild(splitBtn);
 
       row.appendChild(select);
       row.appendChild(input);
-      row.appendChild(splitBtn);
-      row.appendChild(delBtn);
+      row.appendChild(actions);
       return row;
     }
 
@@ -4091,6 +4474,17 @@ ${numbered}`;
         state.voiceProfiles[name] = { pitch: 0, rate: 1.0, browserPitch: 1.0 };
         localStorage.setItem(LS_KEY_VOICE_PROFILES, JSON.stringify(state.voiceProfiles));
         pushVoiceProfilesToCloud();
+        inferVoiceProfilesForCharacters([name]).then(tuned => {
+          if (tuned && tuned[name]) {
+            state.voiceProfiles[name] = {
+              pitch: typeof tuned[name].pitch === 'number' ? tuned[name].pitch : 0,
+              rate: typeof tuned[name].rate === 'number' ? tuned[name].rate : 1.0,
+              browserPitch: typeof tuned[name].browserPitch === 'number' ? tuned[name].browserPitch : 1.0
+            };
+            try { localStorage.setItem(LS_KEY_VOICE_PROFILES, JSON.stringify(state.voiceProfiles)); } catch(e){}
+            pushVoiceProfilesToCloud();
+          }
+        }).catch(err => console.warn('Auto-tuning voice skipped:', err));
       }
       container.querySelectorAll('select').forEach(sel => {
         const opt = document.createElement('option');
@@ -4194,6 +4588,67 @@ ${numbered}`;
     container.querySelectorAll('textarea').forEach(fitTextarea);
   }
 
+  async function inferVoiceProfilesForCharacters(characterNames) {
+    if (!characterNames || !characterNames.length || !state.apiKey) return {};
+    const samples = {};
+    characterNames.forEach(c => { samples[c] = []; });
+
+    const allTexts = [];
+    (state.customStories || []).forEach(s => {
+      const txt = state.storyTextCache.get(s.id) || s.rawLit || state.storyOverrides[s.id];
+      if (txt) allTexts.push(txt);
+    });
+    for (const [id, txt] of state.storyTextCache.entries()) {
+      if (txt && !allTexts.includes(txt)) allTexts.push(txt);
+    }
+
+    allTexts.forEach(txt => {
+      const lines = txt.split(/\r?\n/);
+      for (const line of lines) {
+        const m = line.match(/^\s*\[([^\]]+)\]\s*(.*)$/);
+        if (m) {
+          const spk = m[1].trim();
+          if (samples[spk] && samples[spk].length < 3 && m[2].trim()) {
+            samples[spk].push(m[2].trim());
+          }
+        }
+      }
+    });
+
+    const charList = characterNames.map(c => {
+      const q = samples[c] && samples[c].length ? ` (sample lines: "${samples[c].join('" / "')}")` : '';
+      return `- ${c}${q}`;
+    }).join('\n');
+
+    const prompt = `You are a vocal director in the world of P.G. Wodehouse. Jeeves reads all stories, modulating his tone for each character according to strict pitch standards:
+    - Female characters: MUST have pitch set in the range of +10.0 to +20.0 semitones (e.g., imposing aunts like Agatha at +10 to +14; youthful ladies like Florence or Aline at +15 to +20). Set browserPitch between 1.35 and 1.85.
+    - Male characters: MUST have pitch set in the range of -10.0 to +10.0 semitones (e.g., grave uncles, magistrates, or doctors from -10.0 to -2.0; Bertie and excitable companions like Bingo or Sippy from +1.0 to +8.0). Set browserPitch between 0.70 and 1.20. Jeeves remains at 0.
+    - rate: calibrate according to temperament (0.88 for pompous/ponderous speech up to 1.15 for excitable/youthful speech). Baseline is 1.0.
+
+    Characters:
+    ${charList}
+
+    Return ONLY a JSON object mapping each character name to { "pitch": number, "rate": number, "browserPitch": number }.`;
+
+    const model = getModelForConvoType('general');
+    const url = `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${encodeURIComponent(state.apiKey)}`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.2, responseMimeType: 'application/json' }
+      })
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `Voice profiling error ${resp.status}`);
+    }
+    const data = await resp.json();
+    const raw = (data.candidates?.[0]?.content?.parts?.[0]?.text || '{}').replace(/```json|```/g, '').trim();
+    return JSON.parse(raw);
+  }
+
   function openVoiceSettingsModal() {
     let modal = document.getElementById('voice-settings-modal');
     if (!modal) {
@@ -4241,6 +4696,10 @@ ${numbered}`;
         </div>
         <div class="modal-body">
           <p class="voice-modal-intro">Pitch and rate are applied on top of Jeeves' own voice, so every character is still recognizably read by him. Bigger jumps sound less natural — small nudges usually work best.</p>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:8px;">
+            <button type="button" class="btn-secondary" id="auto-tune-voices-btn" style="padding:6px 12px; font-size:12px;">✨ Auto-Tune Voices with AI</button>
+            <span id="auto-tune-status" style="font-size:11px; color:var(--brass-bright); font-style:italic;"></span>
+          </div>
           <div id="voice-rows">${rowsHtml}</div>
         </div>
         <div class="modal-footer">
@@ -4249,6 +4708,44 @@ ${numbered}`;
         </div>
       </div>
     `;
+
+    modal.querySelector('#auto-tune-voices-btn')?.addEventListener('click', async () => {
+      const btn = modal.querySelector('#auto-tune-voices-btn');
+      const status = modal.querySelector('#auto-tune-status');
+      const targetNames = names.filter(n => n !== 'Jeeves');
+      if (!targetNames.length) return;
+      btn.disabled = true;
+      status.textContent = 'Analyzing characters…';
+      try {
+        const tuned = await inferVoiceProfilesForCharacters(targetNames);
+        let count = 0;
+        for (const [charName, prof] of Object.entries(tuned)) {
+          if (!prof) continue;
+          state.voiceProfiles[charName] = {
+            pitch: typeof prof.pitch === 'number' ? prof.pitch : 0,
+            rate: typeof prof.rate === 'number' ? prof.rate : 1.0,
+            browserPitch: typeof prof.browserPitch === 'number' ? prof.browserPitch : 1.0
+          };
+          const row = modal.querySelector(`.voice-row[data-name="${CSS.escape(charName)}"]`);
+          if (row) {
+            const pSlider = row.querySelector('.pitch-slider');
+            const rSlider = row.querySelector('.rate-slider');
+            const pVal = row.querySelector('.pitch-val');
+            const rVal = row.querySelector('.rate-val');
+            if (pSlider) { pSlider.value = state.voiceProfiles[charName].pitch; pVal.textContent = pSlider.value; }
+            if (rSlider) { rSlider.value = state.voiceProfiles[charName].rate; rVal.textContent = parseFloat(rSlider.value).toFixed(2); }
+          }
+          count++;
+        }
+        try { localStorage.setItem(LS_KEY_VOICE_PROFILES, JSON.stringify(state.voiceProfiles)); } catch(e){}
+        pushVoiceProfilesToCloud();
+        status.textContent = `Updated ${count} voice${count === 1 ? '' : 's'}.`;
+      } catch (err) {
+        status.textContent = 'Auto-tuning failed: ' + err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    });
 
     modal.querySelectorAll('.voice-row').forEach(row => {
       const pitchSlider = row.querySelector('.pitch-slider');
@@ -4575,6 +5072,18 @@ ${numbered}`;
         }
       });
 
+      card.addEventListener('click', async (e) => {
+        if (e.target.closest('button') || e.target.closest('.story-drag-handle')) return;
+        const text = await preloadStoryText(story);
+        if (!text) {
+          alert(`Unable to load "${story.title}"`);
+          return;
+        }
+        JeevesReader.load(text, story.id);
+        openStoryBookModal(story);
+        updateReaderBar();
+      });
+
       card.querySelector('.edit-story-btn').addEventListener('click', async (e) => {
         e.stopPropagation();
         const currentText = await preloadStoryText(story);
@@ -4614,9 +5123,6 @@ ${numbered}`;
         renderLibrary();
       });
 
-      card.addEventListener('click', () => {
-        playBtn.click();
-      });
 
       grid.appendChild(card);
     });
