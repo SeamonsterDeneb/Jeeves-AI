@@ -2275,7 +2275,17 @@ function updateReaderBar() {
       `;
       document.body.appendChild(overlay);
 
+      window.addEventListener('keydown', (e) => {
+        if (overlay.classList.contains('open')) {
+          if (e.key === 'Escape') overlay.querySelector('#close-story-reader').click();
+          if (e.key === 'ArrowLeft') { e.preventDefault(); activeStoryBookFlip?.flipPrev(); }
+          if (e.key === 'ArrowRight') { e.preventDefault(); activeStoryBookFlip?.flipNext(); }
+        } else if (e.key === 'Escape' && document.getElementById('archive-overlay')?.offsetParent) {
+          document.getElementById('close-archives')?.click();
+        }
+      });
       overlay.querySelector('#close-story-reader').addEventListener('click', () => {
+
         JeevesReader.pause();
         if (activeStoryBookFlip) {
           try { activeStoryBookFlip.destroy(); } catch (e) {}
