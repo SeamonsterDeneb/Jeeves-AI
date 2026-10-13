@@ -1597,10 +1597,10 @@
     const role = isRegina
       ? "an impeccably erudite and unflappable lady-in-waiting in the tradition of P.G. Wodehouse"
       : "an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse";
-    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Always use Google Search to ground factual claims in authoritative sources. Every factual claim in your response MUST be followed immediately by an inline numeric citation marker in bare brackets (e.g. 'Northern flying squirrels are strictly nocturnal [1, 2].'). At the end of every response containing factual claims, provide a '### References' section formatted as a numbered list matching the inline markers (e.g. According to [Source Name], [brief domain credibility note], [key finding as link text](URL)). Never list a reference at the bottom that is not cited inline in the body text, and never place raw URLs in inline prose. Whenever you quote from great literature, historical figures, or book characters, incorporate the author's name (and the character's name if applicable) into the prose leading up to the quote, and format only the quote itself as a Google search link wrapped in double quotation marks (e.g. In the words of J.R.R. Tolkien's character, Sam Gamgee, ["There's some good in this world, Mr. Frodo, and it's worth fighting for."](https://www.google.com/search?q=%22There%27s%20some%20good%20in%20this%20world%22%20Tolkien%20quote)). Do not append an em-dash or author attribution after the quote.
+    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Always use Google Search to ground factual claims in authoritative sources. Every factual claim in your response MUST be followed immediately by an inline numeric citation marker in bare brackets (e.g. 'Northern flying squirrels are strictly nocturnal [1, 2].'). At the end of every response containing factual claims, provide a '### References' section formatted as a numbered list matching the inline markers (e.g. According to [Source Name], [brief domain credibility note], [key finding as link text](URL)). Never list a reference at the bottom that is not cited inline in the body text, and never place raw URLs in inline prose. Although the majorito of responses will not call for it, whenever you do quote from great literature, historical figures, or book characters, when the quotation is particularly cogent and fitting, you should incorporate the author's name (and the character's name if applicable) into the prose leading up to the quote, and format only the quote itself as a Google search link wrapped in double quotation marks (e.g. In the words of J.R.R. Tolkien's character, Sam Gamgee, ["There's some good in this world, Mr. Frodo, and it's worth fighting for."](https://www.google.com/search?q=%22There%27s%20some%20good%20in%20this%20world%22%20Tolkien%20quote)). Do not append an em-dash or author attribution after the quote.
       - Mobile Action Links: When scheduling, navigating, or composing drafts, proactively provide markdown links with actionable intents (e.g. [Add to Calendar](https://calendar.google.com/calendar/render?action=TEMPLATE&text=...), [Directions](https://www.google.com/maps/dir/?api=1&destination=...), [Send Email](mailto:...?subject=...&body=...), [Send SMS](sms:?body=...)).`;
     if (state.convoType === 'coding') {
-      instructions += `\n- You are in 'Coding Help' mode. ALWAYS use small, highly targeted replacements. Favor a micro-replacement strategy over replacing large blocks. Ensure all code blocks, commands, or file paths remain clean and syntactically precise. You must use this pattern for modifications:
+      instructions += `\n- You are in 'Coding Help' mode. ALWAYS use small, highly targeted replacements. Favor a micro-replacement strategy over replacing large blocks. If a large function needs to be changed on three different lines, favor providing three replacements rather than a single large one. Ensure all code blocks, commands, or file paths remain clean and syntactically precise. You must use this pattern for modifications:
       Paste this:
       [targeted new code]
       Over this:
@@ -5544,7 +5544,124 @@ ${numbered}`;
   inputEl?.addEventListener('input', autoResizeInput);
   autoResizeInput();
 
+  // ---------- Screen-Blanking Battery Saver Mode ----------
+  let screenWakeLock = null;
+
+  async function requestWakeLock() {
+    try {
+      if ('wakeLock' in navigator) {
+        screenWakeLock = await navigator.wakeLock.request('screen');
+      }
+    } catch (e) {
+      console.warn('Wake lock could not be acquired:', e);
+    }
+  }
+
+  function releaseWakeLock() {
+    if (screenWakeLock) {
+      screenWakeLock.release().catch(() => {});
+      screenWakeLock = null;
+    }
+  }
+
+  function initBlankScreenMode() {
+    const startToken = document.getElementById('blank-screen-token');
+    const overlay = document.getElementById('blank-screen-overlay');
+    const activeToken = document.getElementById('blank-screen-drag-token');
+    const homeTarget = document.getElementById('blank-screen-home-target');
+    const targetBar = document.querySelector('.composer-label-row');
+    if (!startToken || !overlay || !activeToken || !homeTarget || !targetBar) return;
+
+    let isDraggingStart = false;
+    let isDraggingActive = false;
+
+    // 1. Drag crescent moon upward into instructions bar
+    startToken.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      isDraggingStart = true;
+      startToken.setPointerCapture(e.pointerId);
+      targetBar.classList.add('drop-target-active');
+    });
+
+    startToken.addEventListener('pointermove', (e) => {
+      if (!isDraggingStart) return;
+      const targetRect = targetBar.getBoundingClientRect();
+      const inTarget = e.clientY >= targetRect.top && e.clientY <= targetRect.bottom + 20;
+      targetBar.style.background = inTarget ? 'rgba(184, 146, 90, 0.25)' : '';
+    });
+
+    const endStartDrag = (e) => {
+      if (!isDraggingStart) return;
+      isDraggingStart = false;
+      targetBar.classList.remove('drop-target-active');
+      targetBar.style.background = '';
+      try { startToken.releasePointerCapture(e.pointerId); } catch(err) {}
+
+      const targetRect = targetBar.getBoundingClientRect();
+      if (e.clientY <= targetRect.bottom + 25) {
+        overlay.classList.add('active');
+        requestWakeLock();
+
+        // Align dim blue home beacon directly over the initial button coordinates
+        const sRect = startToken.getBoundingClientRect();
+        homeTarget.style.left = `${sRect.left + sRect.width / 2}px`;
+        homeTarget.style.top = `${sRect.top + sRect.height / 2}px`;
+        homeTarget.classList.remove('lit', 'hover');
+
+        // Position active crescent moon at the release point
+        const x = Math.max(30, Math.min(window.innerWidth - 30, e.clientX));
+        const y = Math.max(30, Math.min(window.innerHeight - 30, e.clientY));
+        activeToken.style.left = `${x}px`;
+        activeToken.style.top = `${y}px`;
+      }
+    };
+    startToken.addEventListener('pointerup', endStartDrag);
+    startToken.addEventListener('pointercancel', endStartDrag);
+
+    // 2. Drag moon back down to the home target to awaken
+    activeToken.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      isDraggingActive = true;
+      activeToken.setPointerCapture(e.pointerId);
+      homeTarget.classList.add('lit');
+    });
+
+    activeToken.addEventListener('pointermove', (e) => {
+      if (!isDraggingActive) return;
+      activeToken.style.left = `${e.clientX}px`;
+      activeToken.style.top = `${e.clientY}px`;
+
+      const tRect = homeTarget.getBoundingClientRect();
+      const dist = Math.hypot(e.clientX - (tRect.left + tRect.width / 2), e.clientY - (tRect.top + tRect.height / 2));
+      homeTarget.classList.toggle('hover', dist < 55);
+    });
+
+    const endActiveDrag = (e) => {
+      if (!isDraggingActive) return;
+      isDraggingActive = false;
+      try { activeToken.releasePointerCapture(e.pointerId); } catch(err) {}
+
+      const tRect = homeTarget.getBoundingClientRect();
+      const dist = Math.hypot(e.clientX - (tRect.left + tRect.width / 2), e.clientY - (tRect.top + tRect.height / 2));
+
+      homeTarget.classList.remove('lit', 'hover');
+
+      if (dist < 65) {
+        overlay.classList.remove('active');
+        releaseWakeLock();
+      } else {
+        // Return token to the center area if dropped in mid-screen
+        const targetRect = targetBar.getBoundingClientRect();
+        activeToken.style.left = `${window.innerWidth / 2}px`;
+        activeToken.style.top = `${targetRect.top || (window.innerHeight - 90)}px`;
+      }
+    };
+    activeToken.addEventListener('pointerup', endActiveDrag);
+    activeToken.addEventListener('pointercancel', endActiveDrag);
+  }
+
   // ---------- Init ----------
+  initBlankScreenMode();
   harvestNotesAndRecipes();
   replayHistory();
   updateComposerHint();

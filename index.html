@@ -100,9 +100,29 @@
         </button>
       </div>
     </div> <!-- end .composer-actions -->
-    <p class="hint" id="composer-hint">Enter to send · Shift+Enter for a new line</p>
+    <div class="composer-sub-row">
+      <button type="button" id="blank-screen-token" class="blank-screen-btn" title="Drag upward to blank screen" aria-label="Drag upward to blank screen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+      <p class="hint" id="composer-hint">Enter to send · Shift+Enter for a new line</p>
+    </div>
   </footer>
 
+  <!-- Battery Conserving Blank Screen Overlay -->
+  <div id="blank-screen-overlay" class="blank-screen-overlay" aria-hidden="true">
+    <div id="blank-screen-home-target" class="blank-screen-home-target" title="Return token here to wake screen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>
+    </div>
+    <div id="blank-screen-drag-token" class="blank-screen-active-token" title="Drag back to home target to wake screen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>
+    </div>
+  </div>
 
   <!-- Settings Modal -->
   <div class="modal-overlay" id="modal-overlay">
