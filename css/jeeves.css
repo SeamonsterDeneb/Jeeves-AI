@@ -578,6 +578,10 @@ header.letterhead{
     flex:1;
     min-width:0;
   }
+  .thinking-dots {
+  white-space: nowrap;
+  overflow: hidden;
+}
   .composer-inner{
 
     max-width:860px;
@@ -2176,7 +2180,10 @@ header.letterhead{
   }
   .story-reader-nav-btn.prev { left: 8px; }
   .story-reader-nav-btn.next { right: 8px; }
-
+  .archive-tab:focus-visible, .archive-btn:focus-visible, .icon-btn:focus-visible, .story-card:focus-visible {
+    outline: 2px solid var(--brass-bright) !important;
+    outline-offset: 2px !important;
+  }
   .story-reader-controls {
     width: 100%;
     max-width: 720px;

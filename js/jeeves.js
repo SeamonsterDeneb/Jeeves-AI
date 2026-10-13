@@ -2275,15 +2275,29 @@ function updateReaderBar() {
       `;
       document.body.appendChild(overlay);
 
+      const trap = (m, e) => {
+        m.querySelectorAll('.archive-tab:not([tabindex])').forEach(t => { t.tabIndex = 0; t.onkeydown = k => (k.key === 'Enter' || k.key === ' ') && t.click(); });
+        const f = m.querySelectorAll('button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+        if (!f.length || e.key !== 'Tab') return;
+        if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+      };
+
       window.addEventListener('keydown', (e) => {
         if (overlay.classList.contains('open')) {
+          trap(overlay, e);
           if (e.key === 'Escape') overlay.querySelector('#close-story-reader').click();
           if (e.key === 'ArrowLeft') { e.preventDefault(); activeStoryBookFlip?.flipPrev(); }
           if (e.key === 'ArrowRight') { e.preventDefault(); activeStoryBookFlip?.flipNext(); }
-        } else if (e.key === 'Escape' && document.getElementById('archive-overlay')?.offsetParent) {
-          document.getElementById('close-archives')?.click();
+        } else {
+          const arc = document.getElementById('archive-overlay');
+          if (arc && (arc.offsetWidth > 0 || arc.classList.contains('open'))) {
+            trap(arc, e);
+            if (e.key === 'Escape') document.getElementById('close-archives')?.click();
+          }
         }
       });
+
       overlay.querySelector('#close-story-reader').addEventListener('click', () => {
 
         JeevesReader.pause();
@@ -2934,12 +2948,25 @@ async function submitUserSuggestion() {
     stopThinkingAnimation();
     const el = document.getElementById('jeeves-thinking');
     if (!el) return;
+    el.style.whiteSpace = 'nowrap';
     const phrase = WODEHOUSE_THINKING_PHRASES[Math.floor(Math.random() * WODEHOUSE_THINKING_PHRASES.length)];
-    let dots = '';
-    el.textContent = phrase + dots;
+    let count = 3, growing = true;
+    el.textContent = phrase + '...';
     thinkingInterval = setInterval(() => {
-      dots += '.';
-      el.textContent = phrase + dots;
+      const maxW = el.clientWidth || el.parentElement?.clientWidth || 0;
+      if (growing) {
+        count++;
+        el.textContent = phrase + '.'.repeat(count);
+        if (maxW && el.scrollWidth > maxW) {
+          growing = false;
+          count = Math.max(3, count - 2);
+          el.textContent = phrase + '.'.repeat(count);
+        }
+      } else {
+        count--;
+        el.textContent = phrase + '.'.repeat(count);
+        if (count <= 3) growing = true;
+      }
     }, 1000);
   }
 
@@ -5082,6 +5109,15 @@ ${numbered}`;
         }
       });
 
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      card.setAttribute('aria-label', `Open ${story.title}`);
+      card.addEventListener('keydown', (e) => {
+        if (e.target === card && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          card.click();
+        }
+      });
       card.addEventListener('click', async (e) => {
         if (e.target.closest('button') || e.target.closest('.story-drag-handle')) return;
         const text = await preloadStoryText(story);
