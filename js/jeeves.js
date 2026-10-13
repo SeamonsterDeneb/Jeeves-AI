@@ -664,13 +664,46 @@
   let isAutoSpeakEnabled = false;
 
   const TYPED_HINT = 'Enter to send · Shift+Enter for a new line';
-  const VOICE_HINT = 'Say &ldquo;if you please, Jeeves&rdquo; or &ldquo;over to you, Jeeves&rdquo; when you\u2019re finished';
+  const VOICE_HINTS = [
+    'Say &ldquo;if you please, Jeeves&rdquo; when you want him to answer',
+    'Say &ldquo;over to you, Jeeves&rdquo; when you\u2019d like him to respond',
+    'Say &ldquo;what do you think, Jeeves?&rdquo; when you are finished',
+    'Say &ldquo;your thoughts, Jeeves?&rdquo; when you want his reply',
+    'Say &ldquo;take it away, Jeeves&rdquo; to hand the floor to him',
+    'Say &ldquo;if you would, Jeeves&rdquo; when you are ready for him to speak',
+    'Say &ldquo;thank you, Jeeves&rdquo; when you are ready for his wisdom'
+  ];
+  let voiceHintInterval = null;
+  let voiceHintIndex = 0;
 
   function updateComposerHint() {
     const hintEl = document.getElementById('composer-hint');
     if (!hintEl) return;
-    hintEl.innerHTML = isAutoSpeakEnabled ? VOICE_HINT : TYPED_HINT;
+    if (voiceHintInterval) {
+      clearInterval(voiceHintInterval);
+      voiceHintInterval = null;
+    }
+    const isMicActive = (typeof isRecognitionActive !== 'undefined' && isRecognitionActive) || (micBtn && micBtn.classList.contains('listening'));
+    if (isMicActive) {
+      hintEl.innerHTML = VOICE_HINTS[voiceHintIndex % VOICE_HINTS.length];
+      voiceHintInterval = setInterval(() => {
+        voiceHintIndex = (voiceHintIndex + 1) % VOICE_HINTS.length;
+        const stillListening = (typeof isRecognitionActive !== 'undefined' && isRecognitionActive) || (micBtn && micBtn.classList.contains('listening'));
+        if (hintEl && stillListening) {
+          hintEl.style.opacity = '0';
+          setTimeout(() => {
+            hintEl.innerHTML = VOICE_HINTS[voiceHintIndex];
+            hintEl.style.opacity = '1';
+          }, 200);
+        }
+      }, 10000);
+    } else {
+      voiceHintIndex = 0;
+      hintEl.style.opacity = '1';
+      hintEl.innerHTML = TYPED_HINT;
+    }
   }
+
 
   function toggleAutoSpeak(forcedState, shouldReadLatest = false) {
     isAutoSpeakEnabled = (typeof forcedState === 'boolean') ? forcedState : !isAutoSpeakEnabled;
@@ -3374,6 +3407,7 @@ async function submitUserSuggestion() {
       isRecognitionActive = true;
       isAutoRestart = false;
       recognition.start();
+      updateComposerHint();
     } catch (e) {
       /* Recognition may already be running */
     }
@@ -3388,7 +3422,9 @@ async function submitUserSuggestion() {
       try { recognition.stop(); } catch (e) {}
     }
     if (micBtn) micBtn.classList.remove('listening');
+    updateComposerHint();
   }
+
 
   if (SpeechRecognition && micBtn) {
     recognition = new SpeechRecognition();
@@ -3410,6 +3446,7 @@ async function submitUserSuggestion() {
       micBtn.classList.add('listening');
       if (!isAutoRestart) playListeningChime();
       isAutoRestart = false;
+      updateComposerHint();
     };
 
     recognition.onend = () => {
@@ -3421,9 +3458,12 @@ async function submitUserSuggestion() {
         isAutoRestart = true;
         try { recognition.start(); } catch (e) {
           micBtn.classList.remove('listening');
+          isRecognitionActive = false;
+          updateComposerHint();
         }
       } else {
         micBtn.classList.remove('listening');
+        updateComposerHint();
       }
     };
 

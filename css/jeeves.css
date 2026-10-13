@@ -817,10 +817,12 @@ header.letterhead{
 
   .hint{
     margin:0;
-    font-size:11px;
+    font-size:13px;
+    line-height:1.35;
     color:var(--mist);
     text-align:right;
     padding-right:4px;
+    transition:opacity 0.25s ease;
   }
 
   .sr-only{
