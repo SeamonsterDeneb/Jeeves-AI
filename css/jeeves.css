@@ -1350,6 +1350,29 @@ header.letterhead{
     color: var(--parchment);
     font-size: 13px;
   }
+  .reader-playpause-btn {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 50% !important;
+  background: var(--brass-dim, #8c642d) !important;
+  color: var(--ink-deep, #14120e) !important;
+  border: 1px solid var(--brass-bright, #d4af37) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 4px !important;
+  padding: 0 !important;
+}
+.reader-playpause-btn:hover {
+  background: var(--brass-bright, #d4af37) !important;
+}
+.reader-restart-btn, .reader-back-btn {
+  opacity: 0.75;
+}
+.reader-restart-btn:hover, .reader-back-btn:hover {
+  opacity: 1;
+}
   .reader-bar-btn{
     flex: 0 0 auto;
     background: transparent;

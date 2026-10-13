@@ -2011,11 +2011,13 @@
       return state.voiceProfiles[speaker];
     },
 
-    load(rawText, storyId = 'default_story') {
+    load(rawText, storyId = 'default_story', title = '') {
       this.storyId = storyId;
+      this.storyTitle = title || (state.customStories || []).concat(state.storyCatalogue || []).find(s => s.id === storyId)?.title || document.querySelector('.reader-title, #story-reader-title')?.textContent || '';
       this.lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       this.currentIndex = state.readerProgress[this.storyId] || 0;
       if (this.currentIndex >= this.lines.length) this.currentIndex = 0;
+      this.readTitleOnStart = (this.currentIndex === 0);
     },
 
     saveProgress() {
@@ -2023,15 +2025,87 @@
       try { localStorage.setItem(LS_KEY_READER_PROGRESS, JSON.stringify(state.readerProgress)); } catch(e){}
     },
 
+    async speakLine(text, speaker = 'Jeeves') {
+      const profile = this.getProfile(speaker);
+      const clean = sanitizeForSpeech(text);
+      if (!clean) return;
+      const cleanKey = `${clean}__p${profile.pitch}_r${profile.rate || 1}`;
+      let playedCloud = false;
+      if (getTtsQuota() < 980000) {
+        try {
+          const audioUrl = audioPrefetchCache.has(cleanKey)
+            ? await audioPrefetchCache.get(cleanKey)
+            : await fetchTtsBlobUrl(clean, profile.pitch, profile.rate || 1);
+          audioPrefetchCache.delete(cleanKey);
+          if (audioUrl) {
+            await new Promise(resolve => {
+              this._resolveCurrent = resolve;
+              ttsAudio.src = audioUrl;
+              ttsAudio.playbackRate = state.ttsRate || 1.0;
+              ttsAudio.onended = resolve;
+              ttsAudio.onerror = resolve;
+              ttsAudio.play().catch(resolve);
+            });
+            this._resolveCurrent = null;
+            playedCloud = true;
+          }
+        } catch (err) {
+          console.warn('Reader cloud audio failed, falling back:', err);
+        }
+      }
+      if (!playedCloud && 'speechSynthesis' in window) {
+        await new Promise(resolve => {
+          this._resolveCurrent = resolve;
+          const u = new SpeechSynthesisUtterance(clean);
+          const voice = getJeevesVoice();
+          if (voice) u.voice = voice;
+          u.rate = (state.ttsRate || 1.0) * (profile.rate || 1.0);
+          u.pitch = profile.browserPitch || 1.0;
+          u.onend = () => resolve();
+          u.onerror = () => resolve();
+          speechSynthesis.speak(u);
+        });
+        this._resolveCurrent = null;
+      }
+    },
+
     async play() {
       if (!this.lines.length || this.currentIndex >= this.lines.length) return;
       this.isPlaying = true;
       const myToken = ++this._playToken;
 
+      if (this.readTitleOnStart && this.storyTitle) {
+        this.readTitleOnStart = false;
+        await this.speakLine(this.storyTitle, 'Jeeves');
+        if (myToken !== this._playToken) return;
+      }
+
       while (this.isPlaying && this.currentIndex < this.lines.length) {
         const current = this.parseLine(this.lines[this.currentIndex]);
-        const profile = this.getProfile(current.speaker);
-        const clean = sanitizeForSpeech(current.text);
+        const lineIdx = this.currentIndex;
+        syncStoryBookHighlight(lineIdx);
+
+        const mapping = storyLineToPageMap[lineIdx];
+        let wrapFlipped = false;
+        let wrapTimer = null;
+        if (mapping && typeof mapping === 'object' && mapping.startPage !== mapping.endPage) {
+          const flipToEnd = () => {
+            if (wrapFlipped || !this.isPlaying || this.currentIndex !== lineIdx) return;
+            wrapFlipped = true;
+            if (wrapTimer) clearTimeout(wrapTimer);
+            flipToStoryPage(mapping.endPage);
+          };
+          ttsAudio.ontimeupdate = () => {
+            if (ttsAudio.duration && (ttsAudio.currentTime / ttsAudio.duration >= mapping.splitRatio)) {
+              ttsAudio.ontimeupdate = null;
+              flipToEnd();
+            }
+          };
+          const estDuration = ((current.text.length / 15) * 1000) / (state.ttsRate || 1.0);
+          wrapTimer = setTimeout(flipToEnd, estDuration * mapping.splitRatio);
+        } else {
+          ttsAudio.ontimeupdate = null;
+        }
 
         // Prefetch up to 3 sentences ahead
         for (let offset = 1; offset <= 3; offset++) {
@@ -2047,47 +2121,8 @@
           }
         }
 
-        const cleanKey = clean ? `${clean}__p${profile.pitch}_r${profile.rate || 1}` : '';
-        if (clean) {
-          let playedCloud = false;
-          if (getTtsQuota() < 980000) {
-            try {
-              const audioUrl = audioPrefetchCache.has(cleanKey)
-                ? await audioPrefetchCache.get(cleanKey)
-                : await fetchTtsBlobUrl(clean, profile.pitch, profile.rate || 1);
-              audioPrefetchCache.delete(cleanKey);
-              if (audioUrl) {
-                await new Promise(resolve => {
-                  this._resolveCurrent = resolve;
-                  ttsAudio.src = audioUrl;
-                  ttsAudio.playbackRate = state.ttsRate || 1.0;
-                  ttsAudio.onended = resolve;
-                  ttsAudio.onerror = resolve;
-                  ttsAudio.play().catch(resolve);
-                });
-                this._resolveCurrent = null;
-                playedCloud = true;
-              }
-            } catch (err) {
-              console.warn('Reader cloud audio failed, falling back:', err);
-            }
-          }
-
-          if (!playedCloud && 'speechSynthesis' in window) {
-            await new Promise(resolve => {
-              this._resolveCurrent = resolve;
-              const u = new SpeechSynthesisUtterance(clean);
-              const voice = getJeevesVoice();
-              if (voice) u.voice = voice;
-              u.rate = (state.ttsRate || 1.0) * (profile.rate || 1.0);
-              u.pitch = profile.browserPitch || 1.0;
-              u.onend = () => resolve();
-              u.onerror = () => resolve();
-              speechSynthesis.speak(u);
-            });
-            this._resolveCurrent = null;
-          }
-        }
+        await this.speakLine(current.text, current.speaker);
+        ttsAudio.ontimeupdate = null;
 
         if (myToken !== this._playToken) return; // superseded by a pause/seek elsewhere
 
@@ -2112,10 +2147,12 @@
       const wasPlaying = this.isPlaying;
       this.pause();
       this.currentIndex = Math.max(0, Math.min(index, this.lines.length - 1));
+      if (this.currentIndex === 0) this.readTitleOnStart = true;
       this.saveProgress();
       updateReaderBar();
       if (wasPlaying) this.play();
     },
+
 
     back(n = 1) {
       this.seekTo(this.currentIndex - n);
@@ -2125,13 +2162,17 @@
 
 const ICON_PLAY = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="display:block;margin:auto;"><polygon points="6,4 20,12 6,20"/></svg>';
 const ICON_PAUSE = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="display:block;margin:auto;"><rect x="5" y="4" width="4.5" height="16" rx="1"/><rect x="14.5" y="4" width="4.5" height="16" rx="1"/></svg>';
+const ICON_BACK = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="display:block;margin:auto;"><polygon points="18,4 6,12 18,20"/></svg>';
+const ICON_RESTART = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="display:block;margin:auto;"><rect x="4" y="4" width="3" height="16" rx="0.75"/><polygon points="20,4 9,12 20,20"/></svg>';
+
 
 function buildReaderBar(container) {
   const bar = document.createElement('div');
   bar.className = 'reader-bar';
   bar.innerHTML = `
     <span class="reader-title reader-bar-title"></span>
-    <button class="reader-back-btn reader-bar-btn" title="Back a line" type="button">⟲</button>
+    <button class="reader-restart-btn reader-bar-btn" title="Start over" type="button" aria-label="Start over">${ICON_RESTART}</button>
+    <button class="reader-back-btn reader-bar-btn" title="Back a line" type="button" aria-label="Back a line">${ICON_BACK}</button>
     <button class="reader-playpause-btn reader-bar-btn" title="Play/Pause" type="button" aria-label="Play or pause">${ICON_PLAY}</button>
     <input type="range" class="reader-slider" min="0" max="0" value="0" step="1">
     <span class="reader-position reader-bar-label"></span>
@@ -2140,9 +2181,11 @@ function buildReaderBar(container) {
 
   (container || document.body).appendChild(bar);
 
+  bar.querySelector('.reader-restart-btn').addEventListener('click', () => JeevesReader.seekTo(0));
   bar.querySelector('.reader-back-btn').addEventListener('click', () => {
     JeevesReader.back(1);
   });
+
 
   bar.querySelector('.reader-playpause-btn').addEventListener('click', (e) => {
     e.stopPropagation();
@@ -2205,9 +2248,7 @@ function hideReaderBar() {
 }
 
 function updateReaderBar() {
-  const bars = document.querySelectorAll('.reader-bar');
-  if (!bars.length) return;
-
+  const bars = document.querySelectorAll('.reader-bar, #story-reader-controls-bar');
   const total = JeevesReader.lines.length;
   const idx = Math.min(JeevesReader.currentIndex, Math.max(total - 1, 0));
 
@@ -2267,7 +2308,8 @@ function updateReaderBar() {
           <button type="button" class="story-reader-nav-btn next sr-only" id="story-reader-next" title="Next page">⟶</button>
         </div>
         <div class="story-reader-controls" id="story-reader-controls-bar">
-          <button class="reader-back-btn reader-bar-btn" title="Back a line" type="button">⟲</button>
+          <button class="reader-restart-btn reader-bar-btn" title="Start over" type="button" aria-label="Start over">${ICON_RESTART}</button>
+          <button class="reader-back-btn reader-bar-btn" title="Back a line" type="button" aria-label="Back a line">${ICON_BACK}</button>
           <button class="reader-playpause-btn reader-bar-btn" title="Play/Pause" type="button" aria-label="Play or pause">${ICON_PLAY}</button>
           <input type="range" class="reader-slider" min="0" max="0" value="0" step="1">
           <span class="reader-position reader-bar-label"></span>
@@ -2298,8 +2340,10 @@ function updateReaderBar() {
         }
       });
 
+      overlay.onclick = (e) => {
+        if (!e.target.closest('#story-reader-flip, #story-reader-controls-bar, .story-reader-header')) overlay.querySelector('#close-story-reader').click();
+      };
       overlay.querySelector('#close-story-reader').addEventListener('click', () => {
-
         JeevesReader.pause();
         if (activeStoryBookFlip) {
           try { activeStoryBookFlip.destroy(); } catch (e) {}
@@ -2309,6 +2353,7 @@ function updateReaderBar() {
       });
 
       const bar = overlay.querySelector('#story-reader-controls-bar');
+      bar.querySelector('.reader-restart-btn').addEventListener('click', () => JeevesReader.seekTo(0));
       bar.querySelector('.reader-back-btn').addEventListener('click', () => JeevesReader.back(1));
       bar.querySelector('.reader-playpause-btn').addEventListener('click', (e) => {
         e.stopPropagation();
@@ -2523,7 +2568,13 @@ function updateReaderBar() {
       let currentPara = null;
 
       pageItems.forEach((item, itemIdx) => {
-        storyLineToPageMap[item.lineIdx] = pIdx;
+        if (!storyLineToPageMap[item.lineIdx]) {
+          storyLineToPageMap[item.lineIdx] = { startPage: pIdx, endPage: pIdx, firstLen: item.text.length, splitRatio: 1 };
+        } else {
+          const entry = storyLineToPageMap[item.lineIdx];
+          entry.endPage = pIdx;
+          entry.splitRatio = entry.firstLen / (entry.firstLen + item.text.length);
+        }
 
         if (!currentPara || item.isNewPara) {
           currentPara = document.createElement('p');
@@ -2568,7 +2619,7 @@ function updateReaderBar() {
     });
 
     const initialLine = JeevesReader.currentIndex || 0;
-    const initialPage = storyLineToPageMap[initialLine] || 0;
+    const initialPage = (typeof storyLineToPageMap[initialLine] === 'object' ? storyLineToPageMap[initialLine].startPage : storyLineToPageMap[initialLine]) || 0;
 
     // Blank temporary clones created on single-page backside turns
     const genuinePages = new Set(bookEl.querySelectorAll('.story-book-page'));
@@ -2609,28 +2660,31 @@ function updateReaderBar() {
   }
 }
 
+function flipToStoryPage(targetPage) {
+  if (!activeStoryBookFlip || targetPage === undefined) return;
+  const curPage = activeStoryBookFlip.getCurrentPageIndex();
+  const isPortrait = activeStoryBookFlip.getOrientation() === 'portrait' || window.innerWidth <= 768;
+  if (isPortrait) {
+    if (curPage !== targetPage) activeStoryBookFlip.flip(targetPage);
+  } else {
+    if (targetPage < curPage || targetPage > curPage + 1) {
+      activeStoryBookFlip.flip(targetPage);
+    }
+  }
+}
+
 function syncStoryBookHighlight(lineIdx) {
   const overlay = document.getElementById('story-book-reader-overlay');
   if (!overlay || !overlay.classList.contains('open')) return;
 
   overlay.querySelectorAll('.book-sentence.active').forEach(el => el.classList.remove('active'));
-  const targetSpan = overlay.querySelector(`.book-sentence[data-line-idx="${lineIdx}"]`);
-  if (targetSpan) targetSpan.classList.add('active');
+  overlay.querySelectorAll(`.book-sentence[data-line-idx="${lineIdx}"]`).forEach(el => el.classList.add('active'));
 
-  if (activeStoryBookFlip && storyLineToPageMap[lineIdx] !== undefined) {
-    const targetPage = storyLineToPageMap[lineIdx];
-    const curPage = activeStoryBookFlip.getCurrentPageIndex();
-    const isPortrait = activeStoryBookFlip.getOrientation() === 'portrait' || window.innerWidth <= 768;
-
-    if (isPortrait) {
-      if (curPage !== targetPage) activeStoryBookFlip.flip(targetPage);
-    } else {
-      if (targetPage < curPage || targetPage > curPage + 1) {
-        activeStoryBookFlip.flip(targetPage);
-      }
-    }
-  }
+  const mapping = storyLineToPageMap[lineIdx];
+  const targetPage = typeof mapping === 'object' ? mapping.startPage : mapping;
+  flipToStoryPage(targetPage);
 }
+
 let kitchenSousChef = {
   active: false,
   stepIndex: 0,
