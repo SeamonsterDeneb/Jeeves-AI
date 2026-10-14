@@ -111,6 +111,12 @@
     activeKeyIndex: parseInt(localStorage.getItem('jeeves_active_key_index')) || 0,
     storyCatalogue: [],
     storyTextCache: new Map(),
+    // Always reflects the active key in apiKeys, so every state.apiKey read stays valid
+    get apiKey() {
+      const entry = this.apiKeys[this.activeKeyIndex] || this.apiKeys[0];
+      return ((entry && entry.key) || '').trim();
+    },
+    set apiKey(v) { /* read-only; edit state.apiKeys instead */ },
   };
   
   // Migrate legacy string-based overrides to object-based overrides
@@ -263,8 +269,14 @@
 
     // Falls back to the default model whenever a mode has no override set.
   function getModelForConvoType(type){
+    const override = state.modelOverrides && state.modelOverrides[type];
+    if (override && typeof override === 'object') return override.model || state.model;
+    return override || state.model;
+  }
+  function getKeyForConvoType(type){
     const override = state.modelOverrides[type];
-    return (override && override.model) ? override.model : state.model;
+    const entry = (override && override.model) ? state.apiKeys[override.keyIndex] : null;
+    return (entry && entry.key) ? entry.key.trim() : state.apiKey;
   }
   let isAuthenticated = false;
   let cloudSyncTimer = null;
@@ -312,6 +324,7 @@
             pullCloudStories(),
             pullVoiceProfiles()
           ]);
+          if (state.apiKey && chatEl && chatEl.querySelector('.empty-state')) replayHistory();
           if (archiveOverlay && archiveOverlay.classList.contains('open')) {
             if (state.activeArchiveTab === 'library') {
               renderLibrary();
@@ -330,9 +343,12 @@
 
   async function pushUserSettingsToCloud() {
     if (!isAuthenticated || !window.db || !window.auth?.currentUser) return;
+    if (!state.apiKeys.length) return;
     try {
       await window.db.collection('users').doc(window.auth.currentUser.uid).collection('settings').doc('credentials').set({
-        apiKey: state.apiKey,
+        apiKeys: state.apiKeys,
+        activeKeyIndex: state.activeKeyIndex,
+        apiKey: firebase.firestore.FieldValue.delete(),
         updatedAt: Date.now()
       }, { merge: true });
     } catch (err) {
@@ -346,14 +362,22 @@
       const doc = await window.db.collection('users').doc(window.auth.currentUser.uid).collection('settings').doc('credentials').get();
       if (doc.exists) {
         const data = doc.data();
-        // Support legacy single-key cloud data by migrating it to the new array format
-        if (data.apiKey) {
+        if (Array.isArray(data.apiKeys) && data.apiKeys.length) {
+          state.apiKeys = data.apiKeys;
+          if (typeof data.activeKeyIndex === 'number') state.activeKeyIndex = data.activeKeyIndex;
+          if (state.activeKeyIndex >= state.apiKeys.length) state.activeKeyIndex = 0;
+          localStorage.setItem(LS_KEY_API, JSON.stringify(state.apiKeys));
+          localStorage.setItem('jeeves_active_key_index', state.activeKeyIndex);
+        } else if (data.apiKey && !state.apiKeys.length) {
+          // Legacy single-key document, only used when this device has no keys of its own
           state.apiKeys = [{ name: 'Default', key: data.apiKey }];
           localStorage.setItem(LS_KEY_API, JSON.stringify(state.apiKeys));
-        } else if (data.apiKeys) {
-          state.apiKeys = data.apiKeys;
-          localStorage.setItem(LS_KEY_API, JSON.stringify(state.apiKeys));
+          pushUserSettingsToCloud();
+        } else if (state.apiKeys.length) {
+          pushUserSettingsToCloud();
         }
+      } else if (state.apiKeys.length) {
+        pushUserSettingsToCloud();
       }
     } catch (err) {
       console.warn(`User settings fetch difficulty, ${state.honorific}:`, err);
@@ -1667,8 +1691,6 @@
       5. The credibility clause is mandatory for every entry.`;
     }
 
-    }
-
     const readable = (state.customStories || []).filter(st => st.id && st.title);
     if (readable.length) {
       const list = readable.map(st => {
@@ -1845,8 +1867,8 @@ function renderOverrides() {
       const row = document.createElement('div');
       row.className = 'key-row';
       row.innerHTML = `
-        <input type="text" placeholder="Name" value="${escapeHtml(item.name)}" onchange="updateKeyName(${index}, this.value)" style="width:80px;">
-        <input type="text" id="key-input-${index}" class="key-masked" placeholder="AIza..." value="${escapeHtml(item.key)}" onchange="updateKeyVal(${index}, this.value)">
+        <input type="text" placeholder="Name" value="${escapeHtml(item.name)}" oninput="updateKeyName(${index}, this.value)" style="width:80px;">
+        <input type="text" id="key-input-${index}" class="key-masked" placeholder="AIza..." value="${escapeHtml(item.key)}" oninput="updateKeyVal(${index}, this.value)">
         <button type="button" onclick="toggleKeyVisibility(${index})">👁</button>
         <button type="button" onclick="removeKey(${index})">✕</button>
       `;
@@ -1877,14 +1899,18 @@ function renderOverrides() {
 
   window.updateKeyName = (idx, val) => { state.apiKeys[idx].name = val; };
   window.updateKeyVal = (idx, val) => { state.apiKeys[idx].key = val; };
-  window.removeKey = (idx) => { 
-    state.apiKeys.splice(idx, 1); 
-    renderApiKeys(); 
+  window.removeKey = (idx) => {
+    state.apiKeys.splice(idx, 1);
+    if (state.activeKeyIndex >= state.apiKeys.length) state.activeKeyIndex = Math.max(0, state.apiKeys.length - 1);
+    localStorage.setItem('jeeves_active_key_index', state.activeKeyIndex);
+    renderApiKeys();
+    updateKeySelectors();
   };
 
   document.getElementById('add-key-btn')?.addEventListener('click', () => {
     state.apiKeys.push({ name: '', key: '' });
     renderApiKeys();
+    updateKeySelectors();
   });
 
   async function fetchModels(apiKey, preferredModel){
@@ -3272,7 +3298,7 @@ async function submitUserSuggestion() {
 
       if (!systemInstruction) throw new Error("System instruction is empty.");
       
-      const url = `https://generativelanguage.googleapis.com/v1beta/${usedModel}:streamGenerateContent?alt=sse&key=${encodeURIComponent(state.apiKey)}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/${usedModel}:streamGenerateContent?alt=sse&key=${encodeURIComponent(getKeyForConvoType(state.convoType))}`;
       const temperature = state.convoType === 'research' ? 0.3 : (state.convoType === 'coding' ? 0.4 : 0.85);
       const body = {
         contents: contextMessages,
@@ -5668,9 +5694,11 @@ ${numbered}`;
 
   // Listen for changes within the dynamic API key list
   document.getElementById('api-keys-list')?.addEventListener('input', (e) => {
-    if (e.target.tagName === 'INPUT' && e.target.type === 'text') {
+    // Only react to the active key's field, and only once it looks like a real key
+    if (e.target.tagName === 'INPUT' && e.target.id === `key-input-${state.activeKeyIndex}`) {
       clearTimeout(fetchDebounce);
       const val = e.target.value.trim();
+      if (val.length < 20) return;
       // Fetch using the current key being edited
       fetchDebounce = setTimeout(() => fetchModels(val, state.model), 600);
     }
@@ -5812,6 +5840,6 @@ ${numbered}`;
     addSystemNote('Application cache successfully purged and latest files loaded.');
   }
   if (!state.apiKey) {
-    setTimeout(openModal, 300);
+    setTimeout(() => { if (!state.apiKey) openModal(); }, 2500);
   }
 })();
