@@ -147,12 +147,12 @@
             <span id="auth-user-status" style="font-size: 12px; opacity: 0.8; font-style: italic;"></span>
           </div>
           
-          <div class="field" style="margin-bottom:0;">
-            <label for="api-key">Google Gemini API Key</label>
-            <div class="key-row">
-              <input type="password" id="api-key" placeholder="AIza...">
-              <button type="button" id="toggle-key">Show</button>
+          <div class="field" style="margin-bottom:10px;">
+            <label>API Key Management</label>
+            <div id="api-keys-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;">
+              <!-- Keys will be injected here -->
             </div>
+            <button type="button" id="add-key-btn" class="btn-secondary" style="width:100%; font-size:12px;">+ Add New API Key</button>
             <p class="field-help">Obtain an official API key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.</p>
             <p class="field-help" style="margin-top:6px;"><strong>Note for Cloud Speech:</strong> Ensure the <a href="https://console.cloud.google.com/apis/library/texttospeech.googleapis.com" target="_blank" rel="noopener">Cloud Text-to-Speech API</a> is enabled on the same Google Cloud project, and that any key restrictions allow it. This does require a billing account, but Jeeves' voice will switch over to the standard (usually tinny) local voice on your device before you hit that limit, if you ever get to that point, so you'll never be charged for Jeeves to talk to you.</p>
           </div>
@@ -169,7 +169,8 @@
           <div class="field">
             <label for="model-select">Primary Intelligence Model</label>
             <div class="key-row">
-              <select id="model-select" disabled style="flex:1;">
+              <select id="api-key-selector" style="flex:1;"></select>
+              <select id="model-select" disabled style="flex:2;">
                 <option value="">Enter a valid API key to fetch available models…</option>
               </select>
               <button type="button" id="verify-model-btn">Verify</button>
@@ -182,24 +183,10 @@
           <details class="overrides-details" id="mode-model-overrides-field" style="margin-top:10px;">
             <summary>Specialized Mode Overrides (Optional)</summary>
             <p class="field-help" style="margin:8px 0 10px;">Leave any mode on "Use default model" to fall back to the primary model above.</p>
-            <div style="display:flex; flex-direction:column; gap:8px;">
-              <div class="key-row" style="align-items:center;">
-                <label style="width:110px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:12.5px; color:var(--parchment-dim); margin:0;">💬 General</label>
-                <select id="model-override-general" style="flex:1; font-size:12.5px; padding:6px 10px;" disabled><option value="">Use default model</option></select>
-              </div>
-              <div class="key-row" style="align-items:center;">
-                <label style="width:110px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:12.5px; color:var(--parchment-dim); margin:0;">💻 Coding</label>
-                <select id="model-override-coding" style="flex:1; font-size:12.5px; padding:6px 10px;" disabled><option value="">Use default model</option></select>
-              </div>
-              <div class="key-row" style="align-items:center;">
-                <label style="width:110px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:12.5px; color:var(--parchment-dim); margin:0;">🍳 Cooking</label>
-                <select id="model-override-cooking" style="flex:1; font-size:12.5px; padding:6px 10px;" disabled><option value="">Use default model</option></select>
-              </div>
-              <div class="key-row" style="align-items:center;">
-                <label style="width:110px; flex-shrink:0; text-transform:none; letter-spacing:0; font-size:12.5px; color:var(--brass-bright); font-weight:600; margin:0;">📚 Research</label>
-                <select id="model-override-research" style="flex:1; font-size:12.5px; padding:6px 10px;" disabled><option value="">Use default model</option></select>
-              </div>
+            <div id="overrides-list">
+              <!-- Overrides will be injected here -->
             </div>
+
           </details>
         </section>
 

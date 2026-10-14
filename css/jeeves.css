@@ -2026,6 +2026,10 @@ header.letterhead{
     margin-bottom:14px;
     display:none;
   }
+  .key-masked {
+  -webkit-text-security: disc;
+  text-security: disc;
+}
   .status-msg.show{ display:block; }
   .status-msg.error{ background:rgba(138,59,70,0.18); border:1px solid var(--claret); color:#B8484B; }
   .status-msg.ok{ background:rgba(184,146,90,0.12); border:1px solid var(--brass); color:var(--brass-bright); }

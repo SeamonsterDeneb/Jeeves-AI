@@ -27,7 +27,7 @@
 
   // ---------- Config / storage ----------
 
-  const LS_KEY_API = 'jeeves_api_key';
+  const LS_KEY_API = 'jeeves_api_keys';
   const LS_KEY_PERSONA = 'jeeves_persona';
   const LS_KEY_HONORIFIC = 'jeeves_honorific';
   const LS_KEY_THEME = 'jeeves_theme';
@@ -66,17 +66,30 @@
     dash.textContent = `Usage: ${Math.round(tokenPercent)}% of token limit | ${Math.round(reqPercent)}% of daily limit`;
     dash.style.background = (tokenPercent > 80 || reqPercent > 80) ? 'rgba(138,59,70,0.4)' : 'transparent';
   }
-
-    let state = {
-    apiKey: localStorage.getItem(LS_KEY_API) || '',
+  // Migration helper
+  function getMigratedApiKeys() {
+    const legacyKey = localStorage.getItem('jeeves_api_key');
+    const stored = localStorage.getItem(LS_KEY_API);
+    if (stored) {
+      try { return JSON.parse(stored); } catch(e) { return []; }
+    }
+    if (legacyKey) {
+      const migrated = [{ name: 'Default', key: legacyKey }];
+      localStorage.setItem(LS_KEY_API, JSON.stringify(migrated));
+      localStorage.removeItem('jeeves_api_key');
+      return migrated;
+    }
+    return [];
+  }
+  let fetchDebounce;
+  let state = {
+    apiKeys: getMigratedApiKeys(),
     persona: localStorage.getItem(LS_KEY_PERSONA) || 'reggie',
     honorific: localStorage.getItem(LS_KEY_HONORIFIC) || 'Sir',
     theme: localStorage.getItem(LS_KEY_THEME) || 'light',
     model: localStorage.getItem(LS_KEY_MODEL) || '',
     modelOverrides: JSON.parse(localStorage.getItem(LS_KEY_MODEL_OVERRIDES) || '{}'),
     convoType: 'general',
-
-
     voiceProfiles: JSON.parse(localStorage.getItem(LS_KEY_VOICE_PROFILES) || '{"Jeeves":{"pitch":0,"rate":1.0,"browserPitch":1.0},"Bertie":{"pitch":2.0,"rate":1.0,"browserPitch":1.1},"Aunt Agatha":{"pitch":5.0,"rate":0.95,"browserPitch":1.35},"Bingo":{"pitch":1.5,"rate":1.05,"browserPitch":1.15},"Aline":{"pitch":4.0,"rate":1.0,"browserPitch":1.25},"Sidney":{"pitch":-2.0,"rate":0.95,"browserPitch":0.85}}'),
     readerProgress: JSON.parse(localStorage.getItem(LS_KEY_READER_PROGRESS) || '{}'),
     history: [],
@@ -95,11 +108,17 @@
     bookNotes: JSON.parse(localStorage.getItem(LS_KEY_BOOK_NOTES) || '[]'),
     recipes: JSON.parse(localStorage.getItem(LS_KEY_RECIPES) || '[]'),
     deletedHarvestIds: JSON.parse(localStorage.getItem(LS_KEY_DELETED_HARVESTS) || '[]'),
-    activeArchiveTab: 'archives',
-
+    activeKeyIndex: parseInt(localStorage.getItem('jeeves_active_key_index')) || 0,
     storyCatalogue: [],
     storyTextCache: new Map(),
   };
+  
+  // Migrate legacy string-based overrides to object-based overrides
+  Object.keys(state.modelOverrides).forEach(mode => {
+    if (typeof state.modelOverrides[mode] === 'string') {
+      state.modelOverrides[mode] = { keyIndex: 0, model: state.modelOverrides[mode] };
+    }
+  });
 
     // Automatic categorization for recipes
   function categorizeRecipeText(title, content) {
@@ -244,7 +263,8 @@
 
     // Falls back to the default model whenever a mode has no override set.
   function getModelForConvoType(type){
-    return (state.modelOverrides && state.modelOverrides[type]) || state.model;
+    const override = state.modelOverrides[type];
+    return (override && override.model) ? override.model : state.model;
   }
   let isAuthenticated = false;
   let cloudSyncTimer = null;
@@ -326,10 +346,13 @@
       const doc = await window.db.collection('users').doc(window.auth.currentUser.uid).collection('settings').doc('credentials').get();
       if (doc.exists) {
         const data = doc.data();
+        // Support legacy single-key cloud data by migrating it to the new array format
         if (data.apiKey) {
-          state.apiKey = data.apiKey;
-          localStorage.setItem(LS_KEY_API, state.apiKey);
-          if (apiKeyInput) apiKeyInput.value = state.apiKey;
+          state.apiKeys = [{ name: 'Default', key: data.apiKey }];
+          localStorage.setItem(LS_KEY_API, JSON.stringify(state.apiKeys));
+        } else if (data.apiKeys) {
+          state.apiKeys = data.apiKeys;
+          localStorage.setItem(LS_KEY_API, JSON.stringify(state.apiKeys));
         }
       }
     } catch (err) {
@@ -625,16 +648,9 @@
   const settingsBtn = document.getElementById('settings-btn');
   const closeModalBtn = document.getElementById('close-modal');
   const modalOverlay = document.getElementById('modal-overlay');
-  const apiKeyInput = document.getElementById('api-key');
   const toggleKeyBtn = document.getElementById('toggle-key');
   const honorificInput = document.getElementById('honorific');
   const modelSelect = document.getElementById('model-select');
-  const overrideSelects = {
-    general: document.getElementById('model-override-general'),
-    coding: document.getElementById('model-override-coding'),
-    cooking: document.getElementById('model-override-cooking'),
-    research: document.getElementById('model-override-research'),
-  };
   const saveSettingsBtn = document.getElementById('save-settings-btn');
   const clearHistoryBtn = document.getElementById('clear-history-btn');
   const refreshAppBtn = document.getElementById('refresh-app-btn');
@@ -1643,7 +1659,14 @@
     } else if (state.convoType === 'cooking') {
       instructions += `\n- You are in 'Culinary Advice' mode. Justify your recommendations by referring to reputable cooking blogs or resources by name (e.g. "Serious Eats", "Kenji López-Alt's method"). Use Google Search to find these sources. Do NOT type out URLs yourself — the application will automatically append a verified list of the sources you found via search beneath your answer, so simply mention sources by name in your prose. After explaining the suggestion, if there's enough information in the conversation to compose an entire recipe, put the entirety in a code block for easy copying, divided into Ingredients and Methods. In the Methods, you must include the quantity of each ingredient directly inline within the instruction steps, formatted as: "In a bowl, whisk eggs (8-10 large) with milk (1c), salt (1/2tsp), and pepper (1/4tsp)."`;
     } else if (state.convoType === 'research') {
-      instructions += `\n- You are in 'Research Assistance' mode. Use Google Search to ground your claims in verified, authoritative sources. Cite every claim inline with a footnote marker (following the bare-bracket rule above) placed immediately after the relevant punctuation. At the end of your response, provide a '### References' section formatted as a numbered markdown list, one entry per footnote number in order. Format each reference entry as: "According to [Source Name], [brief statement on source credibility and domain authority], " followed immediately by the key finding itself written AS the link text — e.g. According to Discovery, a premier science education network, [the Komodo dragon is the largest extant lizard, reaching up to ten feet in length](URL). The opening bracket must come right after the credibility clause, the closing bracket must sit right before "(URL)" with nothing in between, and the raw URL must never appear anywhere else in the entry — not as plain text, and not a second time. Use the exact live URLs discovered via Google Search.\n`;
+      instructions += `\n- You are in 'Research Assistance' mode. You MUST strictly follow this citation format:
+      1. Cite every claim inline with a footnote marker [1] placed immediately after the punctuation.
+      2. At the end, provide a '### References' section.
+      3. Each reference entry MUST follow this exact template: "According to [Source Name], [brief statement on source credibility and domain authority], [the key finding as link text](URL)."
+      4. Do not include the raw URL anywhere else.
+      5. The credibility clause is mandatory for every entry.`;
+    }
+
     }
 
     const readable = (state.customStories || []).filter(st => st.id && st.title);
@@ -1661,9 +1684,11 @@
 
   // ---------- Settings modal ----------
   function openModal() {
+    console.log("Jeeves: Current API keys in state:", state.apiKeys);
+    updateKeySelectors()
     // Map of IDs to their corresponding state values
     const fields = {
-      'api-key': state.apiKey,
+      'api-key': state.apiKeys.length > 0 ? state.apiKeys[0].key : '',
       'honorific': state.honorific,
       'tts-rate-slider': state.ttsRate,
       'tts-rate-input': state.ttsRate
@@ -1687,14 +1712,18 @@
     if (statusArea) statusArea.innerHTML = '';
     if (hiddenModelsNote) hiddenModelsNote.style.display = 'none';
     if (modalOverlay) modalOverlay.classList.add('open');
+    renderApiKeys();
+    renderOverrides();
+
 
     const submitSuggBtn = document.getElementById('submit-suggestion-btn');
     if (submitSuggBtn) {
       submitSuggBtn.onclick = submitUserSuggestion;
     }
 
-    if (state.apiKey) {
-      fetchModels(state.apiKey, state.model);
+    if (state.apiKeys.length > 0) {
+      const activeKey = state.apiKeys[state.activeKeyIndex]?.key || state.apiKeys[0].key;
+      fetchModels(activeKey, state.model);
     } else if (modelSelect) {
       modelSelect.disabled = true;
       modelSelect.innerHTML = '<option value="">Enter a valid API key to fetch available models…</option>';
@@ -1776,6 +1805,88 @@
     }
   }
 
+function renderOverrides() {
+  const container = document.getElementById('overrides-list');
+  if (!container) return;
+  const modes = ['General', 'Coding', 'Cooking', 'Research'];
+  
+  container.innerHTML = modes.map(mode => {
+    const key = mode.toLowerCase();
+    const val = state.modelOverrides[key] || { keyIndex: 0, model: '' };
+    
+    return `
+      <div class="field" style="margin-bottom:12px;">
+        <label style="display:block; margin-bottom:4px; font-size:12px; font-weight:600; color:var(--parchment-dim);">${mode.toUpperCase()}</label>
+        <div style="display:flex; gap:8px;">
+          <select onchange="updateOverride('${key}', 'keyIndex', this.value)" style="flex:1;">
+            ${state.apiKeys.map((k, i) => `<option value="${i}" ${val.keyIndex == i ? 'selected' : ''}>${k.name || 'Key '+(i+1)}</option>`).join('')}
+          </select>
+          <select onchange="updateOverride('${key}', 'model', this.value)" style="flex:2;">
+            <option value="">Use default model</option>
+            ${state.fetchedModels.map(m => `<option value="${m.name}" ${val.model === m.name ? 'selected' : ''}>${m.displayName || m.name}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+  window.updateOverride = (mode, field, value) => {
+    if (!state.modelOverrides[mode]) state.modelOverrides[mode] = { keyIndex: 0, model: '' };
+    state.modelOverrides[mode][field] = value;
+    localStorage.setItem(LS_KEY_MODEL_OVERRIDES, JSON.stringify(state.modelOverrides));
+  };
+
+  function renderApiKeys() {
+    const listEl = document.getElementById('api-keys-list');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    state.apiKeys.forEach((item, index) => {
+      const row = document.createElement('div');
+      row.className = 'key-row';
+      row.innerHTML = `
+        <input type="text" placeholder="Name" value="${escapeHtml(item.name)}" onchange="updateKeyName(${index}, this.value)" style="width:80px;">
+        <input type="text" id="key-input-${index}" class="key-masked" placeholder="AIza..." value="${escapeHtml(item.key)}" onchange="updateKeyVal(${index}, this.value)">
+        <button type="button" onclick="toggleKeyVisibility(${index})">👁</button>
+        <button type="button" onclick="removeKey(${index})">✕</button>
+      `;
+      listEl.appendChild(row);
+    });
+  }
+
+  window.toggleKeyVisibility = (idx) => {
+    const input = document.getElementById(`key-input-${idx}`);
+    if (!input) return;
+    input.classList.toggle('key-masked');
+  };
+
+    window.updateKeySelectors = () => {
+    const keySelector = document.getElementById('api-key-selector');
+    if (!keySelector) return;
+    
+    keySelector.innerHTML = state.apiKeys.map((k, i) => 
+      `<option value="${i}" ${state.activeKeyIndex === i ? 'selected' : ''}>${k.name || 'Key ' + (i+1)}</option>`
+    ).join('');
+
+    keySelector.onchange = (e) => {
+      state.activeKeyIndex = parseInt(e.target.value);
+      localStorage.setItem('jeeves_active_key_index', state.activeKeyIndex);
+      fetchModels(state.apiKeys[state.activeKeyIndex].key, state.model);
+    };
+  };
+
+  window.updateKeyName = (idx, val) => { state.apiKeys[idx].name = val; };
+  window.updateKeyVal = (idx, val) => { state.apiKeys[idx].key = val; };
+  window.removeKey = (idx) => { 
+    state.apiKeys.splice(idx, 1); 
+    renderApiKeys(); 
+  };
+
+  document.getElementById('add-key-btn')?.addEventListener('click', () => {
+    state.apiKeys.push({ name: '', key: '' });
+    renderApiKeys();
+  });
+
   async function fetchModels(apiKey, preferredModel){
     modelSelect.disabled = true;
     modelSelect.innerHTML = '<option value="">Fetching model catalogue…</option>';
@@ -1790,6 +1901,7 @@
         throw new Error(msg);
       }
       data = await resp.json();
+      console.log("Jeeves: Model catalogue fetched successfully:", data); // Diagnostic log
     } catch (err) {
       modelSelect.innerHTML = '<option value="">Unable to fetch models</option>';
       modelSelect.disabled = true;
@@ -1858,19 +1970,13 @@
     });
     modelSelect.disabled = false;
 
-    Object.entries(overrideSelects).forEach(([type, sel]) => {
-      if (!sel) return;
-      const currentOverride = state.modelOverrides[type] || '';
-      sel.innerHTML = '<option value="">Use default model</option>';
-      usable.forEach(m => {
-        const opt = document.createElement('option');
-        opt.value = m.name;
-        opt.textContent = m.displayName || m.name;
-        sel.appendChild(opt);
-      });
-      sel.disabled = false;
-      sel.value = usable.some(m => m.name === currentOverride) ? currentOverride : '';
-    });
+    // Update dynamic overrides
+    const overrideContainer = document.getElementById('overrides-list');
+    if (overrideContainer) {
+      const selects = overrideContainer.querySelectorAll('select');
+      // Re-render to ensure dropdowns are populated with the new model list
+      renderOverrides();
+    }
 
     // Selection precedence: previously saved model if still present, else recommended
     const savedStillValid = preferredModel && usable.some(m => m.name === preferredModel);
@@ -1895,14 +2001,13 @@
   }
 
   function saveSettings(){
-    const newKey = apiKeyInput.value.trim();
+    const newKey = state.apiKeys[state.activeKeyIndex]?.key || '';
     const newHonorific = honorificInput.value.trim() || 'Sir';
     const selectedPersonaRadio = document.querySelector('input[name="persona"]:checked');
     const newPersona = selectedPersonaRadio ? selectedPersonaRadio.value : 'reggie';
     const selectedThemeRadio = document.querySelector('input[name="theme"]:checked');
     const newTheme = selectedThemeRadio ? selectedThemeRadio.value : 'light';
     const newModel = modelSelect.value || '';
-
 
     if (!newKey) {
       setStatus('error', 'An API key is required before Jeeves may proceed.');
@@ -1922,8 +2027,14 @@
     localStorage.setItem('jeeves_tts_rate', state.ttsRate);
 
     state.modelOverrides = {};
-    Object.entries(overrideSelects).forEach(([type, sel]) => {
-      if (sel && sel.value) state.modelOverrides[type] = sel.value;
+    const overrideContainers = document.getElementById('overrides-list').querySelectorAll('.field');
+    overrideContainers.forEach(container => {
+      const selects = container.querySelectorAll('select');
+      const mode = container.querySelector('label').textContent.toLowerCase();
+      state.modelOverrides[mode] = {
+        keyIndex: parseInt(selects[0].value),
+        model: selects[1].value
+      };
     });
 
     applyTheme(state.theme);
@@ -1934,7 +2045,7 @@
       outputPerM: freeTierCheck.checked ? null : (priceOutputEl.value.trim() || null),
     };
 
-    localStorage.setItem(LS_KEY_API, state.apiKey);
+    localStorage.setItem(LS_KEY_API, JSON.stringify(state.apiKeys));
     localStorage.setItem(LS_KEY_PERSONA, state.persona);
     localStorage.setItem(LS_KEY_HONORIFIC, state.honorific);
     localStorage.setItem(LS_KEY_THEME, state.theme);
@@ -1949,9 +2060,11 @@
 
   async function verifySelectedModel(){
     const modelName = modelSelect.value;
-    const apiKey = apiKeyInput.value.trim();
+    // Find the key associated with the first entry, or allow for future expansion
+    const apiKey = state.apiKeys.length > 0 ? state.apiKeys[0].key : ''; 
+    
     if (!modelName || !apiKey) {
-      setStatus('error', 'Select a model and ensure a key is entered first.');
+      setStatus('error', 'Select a model and ensure at least one API key is saved first.');
       return;
     }
     verifyModelBtn.disabled = true;
@@ -5495,12 +5608,6 @@ ${numbered}`;
   clearHistoryBtn?.addEventListener('click', clearConversation);
   refreshAppBtn?.addEventListener('click', refreshAppCache);
 
-  toggleKeyBtn?.addEventListener('click', () => {
-    const isPw = apiKeyInput?.type === 'password';
-    if (apiKeyInput) apiKeyInput.type = isPw ? 'text' : 'password';
-    toggleKeyBtn.textContent = isPw ? 'Hide' : 'Show';
-  });
-
   verifyModelBtn?.addEventListener('click', verifySelectedModel);
 
   document.querySelectorAll('input[name="theme"]').forEach(radio => {
@@ -5559,19 +5666,14 @@ ${numbered}`;
     state.convoType = e.target.value;
   });
 
-  let fetchDebounce;
-  apiKeyInput?.addEventListener('input', () => {
-    clearTimeout(fetchDebounce);
-    const val = apiKeyInput.value.trim();
-    if (!val) {
-      if (modelSelect) {
-        modelSelect.disabled = true;
-        modelSelect.innerHTML = '<option value="">Enter a valid API key to fetch available models…</option>';
-      }
-      setStatus('', '');
-      return;
+  // Listen for changes within the dynamic API key list
+  document.getElementById('api-keys-list')?.addEventListener('input', (e) => {
+    if (e.target.tagName === 'INPUT' && e.target.type === 'text') {
+      clearTimeout(fetchDebounce);
+      const val = e.target.value.trim();
+      // Fetch using the current key being edited
+      fetchDebounce = setTimeout(() => fetchModels(val, state.model), 600);
     }
-    fetchDebounce = setTimeout(() => fetchModels(val, state.model), 600);
   });
 
   sendBtn?.addEventListener('click', sendMessage);
