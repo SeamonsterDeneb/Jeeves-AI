@@ -1869,8 +1869,8 @@ function renderOverrides() {
       row.innerHTML = `
         <input type="text" placeholder="Name" value="${escapeHtml(item.name)}" oninput="updateKeyName(${index}, this.value)" style="width:80px;">
         <input type="text" id="key-input-${index}" class="key-masked" placeholder="AIza..." value="${escapeHtml(item.key)}" oninput="updateKeyVal(${index}, this.value)">
-        <button type="button" onclick="toggleKeyVisibility(${index})">👁</button>
-        <button type="button" onclick="removeKey(${index})">✕</button>
+        <button type="button" onclick="toggleKeyVisibility(${index})">${SVG_EYE}</button>
+        <button type="button" onclick="removeKey(${index})">${SVG_DELETE}</button>
       `;
       listEl.appendChild(row);
     });
@@ -2336,6 +2336,9 @@ const ICON_PLAY = '<svg viewBox="0 0 24 24" width="15" height="15" fill="current
 const ICON_PAUSE = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="display:block;margin:auto;"><rect x="5" y="4" width="4.5" height="16" rx="1"/><rect x="14.5" y="4" width="4.5" height="16" rx="1"/></svg>';
 const ICON_BACK = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="display:block;margin:auto;"><polygon points="18,4 6,12 18,20"/></svg>';
 const ICON_RESTART = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="display:block;margin:auto;"><rect x="4" y="4" width="3" height="16" rx="0.75"/><polygon points="20,4 9,12 20,20"/></svg>';
+const SVG_EYE = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle;"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path><circle cx="12" cy="12" r="3" fill="currentColor"></circle></svg>`;
+const SVG_DELETE = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+
 
 
 function buildReaderBar(container) {
