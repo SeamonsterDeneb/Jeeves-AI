@@ -1336,14 +1336,13 @@ header.letterhead{
   .archive-tab-nav {
     flex: 0 0 auto;
     display: flex;
+    flex-wrap: wrap;
     gap: 4px;
-    max-width: 860px;
+    max-width: 100%;
     width: 100%;
     margin: 0 auto;
-    padding-left: 8px;
+    padding: 0 4px;
     border-bottom: 2px solid var(--hairline);
-    overflow-x: auto;
-    scrollbar-width: none;
   }
   .archive-tab-nav::-webkit-scrollbar { display: none; }
   .archive-tab-btn {
@@ -1385,10 +1384,15 @@ header.letterhead{
   .archive-panel-toolbar {
     display: flex;
     align-items: center;
-    gap: 8px;
-    max-width: 860px;
+    gap: 6px;
+    max-width: 100%;
     width: 100%;
-    margin: 12px auto 10px;
+    margin: 8px auto 8px;
+    padding: 0 4px;
+  }
+  .archive-panel-toolbar input[type="text"] {
+    flex: 1;
+    min-width: 0;
   }
 
   #archive-overlay{
@@ -1398,7 +1402,9 @@ header.letterhead{
     background:var(--ink-deep);
     z-index:90;
     flex-direction:column;
-    padding:18px 16px;
+    padding:12px 8px;
+    width: 100vw;
+    overflow-x: hidden;
   }
   #archive-overlay.open{ display:flex; }
   .archive-header{

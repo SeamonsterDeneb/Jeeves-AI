@@ -294,7 +294,12 @@
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-<script id="jeeves-script" defer></script>
-<script>document.getElementById('jeeves-script').src = 'js/jeeves.js?t=' + Date.now();</script>
+<script id="jeeves-script"></script>
+<script>
+  window.addEventListener('load', () => {
+    document.getElementById('jeeves-script').src = 'js/jeeves.js?t=' + Date.now();
+  });
+</script>
+
 </body>
 </html>
