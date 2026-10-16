@@ -1598,15 +1598,15 @@
   function addModelMessagePlaceholder(){
     const { row, bubble } = messageRow('model');
     const phrases = [
-      `Allow me to consider that, ${state.honorific}.`,
-      `Let me ponder the particulars of your request for a moment.`,
-      `One moment, ${state.honorific}; let me turn that over in my mind.`,
-      `I shall examine the matter forthwith, ${state.honorific}.`,
-      `If you would be so kind as to wait a moment, I am looking into that.`,
-      `Just a brief pause, ${state.honorific}, while I arrange my thoughts.`
+      `Thinking that over, ${state.honorific}.`,
+      `Just putting the pieces together, ${state.honorific}.`,
+      `Nearly there, ${state.honorific}.`,
+      `Almost got it, ${state.honorific}.`,
+      `Sorting that out now, ${state.honorific}.`,
+      `Working on it, ${state.honorific}.`
     ];
     const phrase = phrases[Math.floor(Math.random() * phrases.length)];
-    bubble.innerHTML = `<span style="font-family:var(--font-ui); font-size:14px; color:var(--mist);">${phrase}</span>`;    
+    bubble.innerHTML = `<span class="thinking-placeholder" style="font-family:var(--font-ui); font-size:14px; color:var(--mist);">${phrase}</span>`;    
     if (chatEl) chatEl.appendChild(row);
     scrollToBottom();
     return { row, bubble, phrase };
@@ -3205,7 +3205,13 @@ async function submitUserSuggestion() {
     if (el) el.textContent = '';
   }
 
+  function primeAudioSession() {
+    const silentAudio = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=');
+    silentAudio.play().catch(() => {});
+  }
+
   async function sendMessage(){
+    primeAudioSession(); // Prime the session immediately
     stopListening();
     const text = inputEl.value.trim();
     if (!text && pendingAttachments.length === 0) return;
@@ -3271,6 +3277,10 @@ async function submitUserSuggestion() {
       speak(stallPhrase);
     }
     startThinkingAnimation();
+    
+    // Ensure the placeholder is visible for at least 1500ms
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
 
     const contextMessages = state.history.slice(-MAX_TURNS_SENT).map(t => ({ role: t.role, parts: t.parts }));
 
