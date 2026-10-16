@@ -46,7 +46,12 @@
 [data-theme="light"] .field select{ background:#fbf8f2; }
 *{box-sizing:border-box;}
 
-html,body{height:100%;}
+html,body{
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  position: fixed;
+}
 body{
   margin:0;
   background:
@@ -169,16 +174,12 @@ header.letterhead{
   .icon-btn svg{width:19px;height:19px;}
 
   /* Chat area */
-  main#chat{
-    flex:1 1 auto;
-    overflow-y:auto;
-    overflow-anchor:none;
-    padding:22px 16px 10px;
-    display:flex;
-    flex-direction:column;
-    gap:16px;
-    scroll-behavior:smooth;
-  }
+main#chat {
+  flex: 1;
+  overflow-y: auto;
+  width: 100%;
+  max-width: 100%;
+}
 
   main#chat::-webkit-scrollbar{width:8px;}
   main#chat::-webkit-scrollbar-thumb{background:rgba(184,146,90,0.25); border-radius:8px;}
@@ -2513,6 +2514,12 @@ header.letterhead{
     }
 
   }
+header.letterhead {
+  padding-top: max(14px, env(safe-area-inset-top));
+}
+footer#composer {
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
 
 
 
