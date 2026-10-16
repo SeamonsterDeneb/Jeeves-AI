@@ -291,14 +291,7 @@
   function signInWithGoogle() {
     if (!window.auth) return;
     const provider = new firebase.auth.GoogleAuthProvider();
-    window.auth.signInWithPopup(provider).catch(err => {
-      console.error(`Authentication difficulty, ${state.honorific}:`, err);
-      if (err.code === 'auth/unauthorized-domain') {
-        alert(`Authentication failed: This domain is not authorized in the Firebase Console. Please add "${window.location.hostname}" under Firebase -> Authentication -> Settings -> Authorized Domains.`);
-      } else if (err.code !== 'auth/popup-closed-by-user') {
-        alert(`Authentication error (${err.code}): ${err.message}`);
-      }
-    });
+    window.auth.signInWithRedirect(provider);
   }
 
 
@@ -343,6 +336,15 @@
             }
           }
 
+      }
+    });
+
+    window.auth.getRedirectResult().catch(err => {
+      console.error(`Authentication difficulty, ${state.honorific}:`, err);
+      if (err.code === 'auth/unauthorized-domain') {
+        alert(`Authentication failed: This domain is not authorized in the Firebase Console. Please add "${window.location.hostname}" under Firebase -> Authentication -> Settings -> Authorized Domains.`);
+      } else if (err.code) {
+        alert(`Authentication error (${err.code}): ${err.message}`);
       }
     });
   }

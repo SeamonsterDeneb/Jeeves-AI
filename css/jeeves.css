@@ -623,6 +623,9 @@ main#chat {
     align-items:center;
     gap:2px; /* Tightened gap between icons to save space */
   }
+  .composer-actions > * {
+    min-width: 0;
+  }
 
   textarea#input::placeholder{ color:var(--mist); }
   #send-btn{
