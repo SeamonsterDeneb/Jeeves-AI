@@ -54,6 +54,7 @@ html,body{
 }
 body{
   margin:0;
+  height: 100dvh;
   background:
     radial-gradient(ellipse at top, rgba(184,146,90,0.06), transparent 60%),
     var(--ink-deep);
@@ -68,7 +69,7 @@ body{
 /* Letterhead header */
 header.letterhead{
   flex:0 0 auto;
-  padding:14px 20px 12px;
+  padding: env(safe-area-inset-top) 14px 10px;
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -179,6 +180,7 @@ main#chat {
   overflow-y: auto;
   width: 100%;
   max-width: 100%;
+  padding: 16px;
 }
 
   main#chat::-webkit-scrollbar{width:8px;}
@@ -549,6 +551,7 @@ main#chat {
   footer#composer{
     flex:0 0 auto;
     padding:12px 10px 16px; /* Slightly tighter padding */
+    padding-bottom: env(safe-area-inset-bottom);
     background:linear-gradient(0deg, var(--ink-panel), rgba(24,41,32,0));
     border-top:1px solid var(--hairline);
   }
