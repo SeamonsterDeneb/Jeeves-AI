@@ -1,4 +1,10 @@
 (function(){
+
+  console.log("Jeeves: Initializing... Timestamp:", Date.now());
+  window.onerror = function(msg, url, line) {
+    alert("Jeeves Error: " + msg + " at " + line);
+  };
+
   'use strict';
   // ---------- Firebase Configuration & Initialization ----------
   const firebaseConfig = {
