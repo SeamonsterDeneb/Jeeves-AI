@@ -3,6 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+  <script>
+    function setJeevesVhUnit() {
+      document.documentElement.style.setProperty('--vh', (window.innerHeight * 0.01) + 'px');
+    }
+    setJeevesVhUnit();
+    window.addEventListener('resize', setJeevesVhUnit);
+    window.addEventListener('orientationchange', setJeevesVhUnit);
+  </script>
   <title>Jeeves</title>
   <link rel="icon" type="image/png" href="Jeeves.png">
   <link rel="apple-touch-icon" href="Jeeves.png">
@@ -14,7 +22,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/base16/eighties.min.css">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="css/jeeves.css">
+  <script>document.write('<link rel="stylesheet" href="css/jeeves.css?t=' + Date.now() + '">');</script>
 </head>
 <body>
   <header class="letterhead">
@@ -29,7 +37,9 @@
 
     <button class="icon-btn" id="settings-btn" title="Settings" aria-label="Open settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      <span id="settings-flag" class="settings-flag" style="display:none; color:darkred" title="Unresolved suggestion waiting">⚑</span>
+      <span id="settings-flag" class="settings-flag" style="display:none; position:relative;" title="Unresolved suggestion waiting">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="darkred" style="position:absolute; top:-4px; right:-6px;"><path d="M5 2a1 1 0 0 1 1 1v18a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1z"/><path d="M6 3h11.2c.9 0 1.35 1.09.71 1.73L14.4 8.2l3.5 3.5c.64.64.19 1.73-.71 1.73H6V3z"/></svg>
+      </span>
     </button>
   </header>
 
@@ -290,7 +300,6 @@
 <script src="js/highlight.min.js?v=2"></script>
 <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/jeeves.css">
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>

@@ -54,7 +54,7 @@ html,body{
 }
 body{
   margin:0;
-  height: 100dvh;
+  height: calc(var(--vh, 1vh) * 100);
   background:
     radial-gradient(ellipse at top, rgba(184,146,90,0.06), transparent 60%),
     var(--ink-deep);
@@ -1616,6 +1616,7 @@ main#chat {
 }
    .archive-panel-toolbar input[type="text"] {
     flex: 0 1 280px;
+    min-width: 0;
     background: var(--ink-panel-2);
     border: 1px solid var(--hairline);
     color: var(--parchment);

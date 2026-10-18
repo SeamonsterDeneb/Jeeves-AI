@@ -5852,6 +5852,9 @@ ${numbered}`;
   }
 
   // ---------- Init ----------
+  window.addEventListener('scroll', () => {
+    if (window.scrollX !== 0) window.scrollTo(0, window.scrollY);
+  }, { passive: true });
   initBlankScreenMode();
   harvestNotesAndRecipes();
   replayHistory();
