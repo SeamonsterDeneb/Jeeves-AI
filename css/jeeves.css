@@ -1232,6 +1232,92 @@ main#chat {
     gap: 12px;
     margin-top: 14px;
   }
+
+  /* recipe suggestion superscript modals */
+.recipe-proposal-anchor {
+  background: rgba(138, 59, 70, 0.08);
+  border-bottom: 1.5px dotted var(--claret, #8a3b46);
+}
+
+.recipe-proposal-sup {
+  position: relative;
+  top: -0.55em;
+  display: inline-block;
+  min-width: 15px;
+  margin-left: 2px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--claret, #8a3b46);
+  color: #fff;
+  font: 700 10.5px/1.3 var(--font-ui, sans-serif);
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+.recipe-proposal-sup::after {
+  content: '';
+  position: absolute;
+  inset: -9px -7px;
+}
+.recipe-proposal-sup:hover { transform: scale(1.15); filter: brightness(1.15); }
+.recipe-proposal-sup:focus-visible { outline: 2px solid var(--brass-bright, #d4af37); outline-offset: 2px; }
+
+.recipe-proposal-unplaced {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.25);
+  font: 600 11px/1.6 var(--font-ui, sans-serif);
+  opacity: 0.85;
+}
+
+.recipe-proposal-link {
+  color: var(--brass-bright);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.recipe-proposal-link:hover { text-decoration-style: solid; }
+
+#proposal-modal { z-index: 1100; }
+#proposal-modal .modal { max-width: 520px; }
+
+.proposal-reason {
+  margin: 0 0 16px;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--mist);
+}
+.proposal-label {
+  margin: 0 0 5px;
+  font: 600 10.5px/1 var(--font-ui);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--mist);
+}
+.proposal-box {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--ink-panel-2);
+  color: var(--parchment);
+  font-size: 13.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.proposal-box.old {
+  border-left: 3px solid var(--claret, #8a3b46);
+  text-decoration: line-through;
+  text-decoration-color: rgba(138, 59, 70, 0.6);
+  opacity: 0.8;
+}
+.proposal-box.new { border-left: 3px solid #4d7a4f; }
+
   .book-container-wrap {
     flex: 1 1 auto;
     display: flex;

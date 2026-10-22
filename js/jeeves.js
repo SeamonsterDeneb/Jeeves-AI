@@ -170,6 +170,7 @@
 
     const recipeMap = new Map();
     state.recipes.forEach(r => recipeMap.set(r.id, r));
+    const changed = new Set();
 
     // Combine saved conversations with the currently active conversation history
     const allConvos = [...(state.conversations || [])];
@@ -222,6 +223,16 @@
             if ((hasIngredients && hasCulinaryUnits) || (hasIngredients && hasCulinarySteps)) {
               if (!recipeMap.has(id)) {
                 const recipeTitle = deriveRecipeTitle(body, raw);
+                const blockTime = turn.timestamp || convo.updatedAt || 0;
+                const sibling = recipeTitle === 'Culinary Creation' ? null : [...recipeMap.values()].find(r => (r.title || '').trim().toLowerCase() === recipeTitle.trim().toLowerCase());
+                if (sibling) {
+                  if (blockTime > (sibling.timestamp || 0) && sibling.text !== body) {
+                    Object.assign(sibling, { text: body, timestamp: blockTime, convoId: convo.id, convoTitle: convo.title || 'Conversation' });
+                    changed.add(sibling.id);
+                  }
+                  continue;
+                }
+                changed.add(id);
                 recipeMap.set(id, {
                   id,
                   convoId: convo.id,
@@ -271,6 +282,7 @@
       localStorage.setItem(LS_KEY_BOOK_NOTES, JSON.stringify(state.bookNotes));
       localStorage.setItem(LS_KEY_RECIPES, JSON.stringify(state.recipes));
     } catch(e){}
+    changed.forEach(id => pushRecipeToCloud(state.recipes.find(r => r.id === id)));
   }
 
     // Falls back to the default model whenever a mode has no override set.
@@ -321,8 +333,10 @@
             pullUserSettings(),
             pullCloudArchives(),
             pullCloudStories(),
-            pullVoiceProfiles()
+            pullVoiceProfiles(),
+            pullCloudRecipes()
           ]);
+          harvestNotesAndRecipes();
           if (state.apiKey && chatEl && chatEl.querySelector('.empty-state')) replayHistory();
           if (archiveOverlay && archiveOverlay.classList.contains('open')) {
             if (state.activeArchiveTab === 'library') {
@@ -515,6 +529,58 @@
       }
     } catch (err) {
       console.warn(`Voice profile fetch difficulty, ${state.honorific}:`, err);
+    }
+  }
+
+  async function pushRecipeToCloud(recipe) {
+    if (!recipe) return;
+    recipe.updatedAt = Date.now();
+    if (!isAuthenticated || !window.db || !window.auth?.currentUser) return;
+    try {
+      await window.db.collection('users').doc(window.auth.currentUser.uid).collection('recipes').doc(recipe.id).set(recipe, { merge: true });
+    } catch (err) {
+      console.warn(`Recipe sync difficulty, ${state.honorific}:`, err);
+    }
+  }
+
+  async function deleteRecipeFromCloud(id) {
+    if (!isAuthenticated || !window.db || !window.auth?.currentUser) return;
+    try {
+      const userDoc = window.db.collection('users').doc(window.auth.currentUser.uid);
+      await userDoc.collection('recipes').doc(id).delete();
+      await userDoc.collection('settings').doc('recipeBox').set({ deleted: firebase.firestore.FieldValue.arrayUnion(id) }, { merge: true });
+    } catch (err) {
+      console.warn(`Recipe delete difficulty, ${state.honorific}:`, err);
+    }
+  }
+
+  async function pullCloudRecipes() {
+    if (!window.db || !window.auth?.currentUser) return;
+    try {
+      const userDoc = window.db.collection('users').doc(window.auth.currentUser.uid);
+      const tombRef = userDoc.collection('settings').doc('recipeBox');
+      const [snapshot, tomb] = await Promise.all([userDoc.collection('recipes').get(), tombRef.get()]);
+      const cloudDeleted = (tomb.exists && tomb.data().deleted) || [];
+      const localOnly = state.deletedHarvestIds.filter(id => !cloudDeleted.includes(id));
+      if (localOnly.length) tombRef.set({ deleted: firebase.firestore.FieldValue.arrayUnion(...localOnly) }, { merge: true });
+      state.deletedHarvestIds = Array.from(new Set([...state.deletedHarvestIds, ...cloudDeleted]));
+      const merged = new Map(state.recipes.map(r => [r.id, r]));
+      const inCloud = new Map();
+      snapshot.forEach(doc => {
+        const c = { id: doc.id, ...doc.data() };
+        inCloud.set(c.id, c);
+        const l = merged.get(c.id);
+        if (!l || (c.updatedAt || c.timestamp || 0) >= (l.updatedAt || l.timestamp || 0)) merged.set(c.id, c);
+      });
+      state.deletedHarvestIds.forEach(id => merged.delete(id));
+      state.recipes = Array.from(merged.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      try {
+        localStorage.setItem(LS_KEY_RECIPES, JSON.stringify(state.recipes));
+        localStorage.setItem(LS_KEY_DELETED_HARVESTS, JSON.stringify(state.deletedHarvestIds));
+      } catch(e){}
+      state.recipes.filter(r => inCloud.get(r.id) !== r).forEach(r => pushRecipeToCloud(r));
+    } catch (err) {
+      console.warn(`Recipe fetch difficulty, ${state.honorific}:`, err);
     }
   }
 
@@ -1678,7 +1744,7 @@
     const role = isRegina
       ? "an impeccably erudite and unflappable lady-in-waiting in the tradition of P.G. Wodehouse"
       : "an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse";
-    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Always use Google Search to ground factual claims in authoritative sources. Every factual claim in your response MUST be followed immediately by an inline numeric citation marker in bare brackets (e.g. 'Northern flying squirrels are strictly nocturnal [1, 2].'). At the end of every response containing factual claims, provide a '### References' section formatted as a numbered list matching the inline markers (e.g. According to [Source Name], [brief domain credibility note], [key finding as link text](URL)). Never list a reference at the bottom that is not cited inline in the body text, and never place raw URLs in inline prose. Although the majorito of responses will not call for it, whenever you do quote from great literature, historical figures, or book characters, when the quotation is particularly cogent and fitting, you should incorporate the author's name (and the character's name if applicable) into the prose leading up to the quote, and format only the quote itself as a Google search link wrapped in double quotation marks (e.g. In the words of J.R.R. Tolkien's character, Sam Gamgee, ["There's some good in this world, Mr. Frodo, and it's worth fighting for."](https://www.google.com/search?q=%22There%27s%20some%20good%20in%20this%20world%22%20Tolkien%20quote)). Do not append an em-dash or author attribution after the quote.
+    let instructions = `You are Reginald Jeeves, an impeccably erudite and unflappable gentleman's gentleman in the tradition of P.G. Wodehouse. You address the person you serve as "${h}". Always check the ambient timestamp against the time of the previous message; if a substantial gap has elapsed, organically acknowledge the change in time (e.g., a fresh greeting), but omit repetitive pleasantries during brisk exchanges. Your purpose is to be a genuinely useful, accurate, and efficient personal assistant. Your persona is a matter of tone and manner: keep responses concise, accurate, and structured. Always use Google Search to ground factual claims in authoritative sources. Every factual claim in your response MUST be followed immediately by an inline numeric citation marker in bare brackets (e.g. 'Northern flying squirrels are strictly nocturnal [1, 2].'). At the end of every response containing factual claims, provide a '### References' section formatted as a numbered list matching the inline markers (e.g. According to [Source Name], [brief domain credibility note], [key finding as link text](URL)). Never list a reference at the bottom that is not cited inline in the body text, and never place raw URLs in inline prose. Although the majority of responses will not call for it, whenever you do quote from great literature, historical figures, or book characters, when the quotation is particularly cogent and fitting, you should incorporate the author's name (and the character's name if applicable) into the prose leading up to the quote, and format only the quote itself as a Google search link wrapped in double quotation marks (e.g. In the words of J.R.R. Tolkien's character, Sam Gamgee, ["There's some good in this world, Mr. Frodo, and it's worth fighting for."](https://www.google.com/search?q=%22There%27s%20some%20good%20in%20this%20world%22%20Tolkien%20quote)). Do not append an em-dash or author attribution after the quote.
       - Mobile Action Links: When scheduling, navigating, or composing drafts, proactively provide markdown links with actionable intents (e.g. [Add to Calendar](https://calendar.google.com/calendar/render?action=TEMPLATE&text=...), [Directions](https://www.google.com/maps/dir/?api=1&destination=...), [Send Email](mailto:...?subject=...&body=...), [Send SMS](sms:?body=...)).`;
     if (state.convoType === 'coding') {
       instructions += `\n- You are in 'Coding Help' mode. ALWAYS use small, highly targeted replacements. Favor a micro-replacement strategy over replacing large blocks. If a large function needs to be changed on three different lines, favor providing three replacements rather than a single large one. Ensure all code blocks, commands, or file paths remain clean and syntactically precise. You must use this pattern for modifications:
@@ -1689,6 +1755,7 @@
     } else if (state.convoType === 'general') {
       instructions += `\n- You are in 'General Conversation' mode. If you provide any draft text (emails, messages, search terms, quotes, etc.), please present the final result within a \`\`\`copy block for easy copying.`;
     } else if (state.convoType === 'cooking') {
+      instructions += `\n- Recipe Box titles on file: ${(state.recipes || []).map(r => '"' + r.title + '"').join(', ') || 'none yet'}. When the person refers to one, its full text will be supplied to you.`;
       instructions += `\n- You are in 'Culinary Advice' mode. Justify your recommendations by referring to reputable cooking blogs or resources by name (e.g. "Serious Eats", "Kenji López-Alt's method"). Use Google Search to find these sources. Do NOT type out URLs yourself — the application will automatically append a verified list of the sources you found via search beneath your answer, so simply mention sources by name in your prose. After explaining the suggestion, if there's enough information in the conversation to compose an entire recipe, put the entirety in a code block for easy copying, divided into Ingredients and Methods. In the Methods, you must include the quantity of each ingredient directly inline within the instruction steps, formatted as: "In a bowl, whisk eggs (8-10 large) with milk (1c), salt (1/2tsp), and pepper (1/4tsp)."`;
     } else if (state.convoType === 'research') {
       instructions += `\n- You are in 'Research Assistance' mode. You MUST strictly follow this citation format:
@@ -1707,7 +1774,7 @@
         const mark = (at > 0 && at < n) ? `, bookmarked at ${Math.round(at / n * 100)}%` : '';
         return `"${st.title}" (ID: ${st.id}${mark})`;
       }).join(', ');
-      instructions += `\n- Story Library: you can read these stories aloud: ${list}.\n  STORY PROTOCOL: (1) If the person asks for a story without naming one, or the moment suits it, offer exactly ONE title by name, phrased as a question, and do not list the others. Do not include the marker in an offer. (2) If they decline, acknowledge it in a few gracious words and offer a different title they have not yet declined; if none remain, say so and ask what else you might do. (3) If they accept, or name a story themselves, and that story has NO bookmark, reply with exactly one short sentence in the form "Here is <Title>, ${h}:" followed by the marker [[READ_STORY:ID]]. (4) If the story they chose IS marked as bookmarked, do not start yet: ask in one brief question whether they would like it from the beginning or resumed where you last left off, and include no marker. If they already said which in their request, skip the question. (5) Once they answer, reply with one short sentence, either "Here is <Title>, ${h}:" for the beginning or "Resuming <Title> where we left off, ${h}:" for resuming, followed by the marker [[READ_STORY:ID:START]] or [[READ_STORY:ID:RESUME]] accordingly. Replies that carry a marker must not end with a question, and this overrides any other instruction to end with a follow-up question. (6) Never include a marker unless the person has just accepted or named a story and, where required, chosen beginning or resume. Do not use Google Search or add references for story requests.`;
+      instructions += `\n- Story Library: you can read these stories aloud: ${list}.\n  STORY PROTOCOL: (1) If the person asks for a story without naming one, or the moment suits it (but no more often than every ten back and forths with your master), offer exactly ONE title by name, phrased as a question, and do not list the others. Do not include the marker in an offer. (2) If they decline, acknowledge it in a few gracious words and offer a different title they have not yet declined; if none remain, say so and ask what else you might do. (3) If they accept, or name a story themselves, and that story has NO bookmark, reply with exactly one short sentence in the form "Here is <Title>, ${h}:" followed by the marker [[READ_STORY:ID]]. (4) If the story they chose IS marked as bookmarked, do not start yet: ask in one brief question whether they would like it from the beginning or resumed where you last left off, and include no marker. If they already said which in their request, skip the question. (5) Once they answer, reply with one short sentence, either "Here is <Title>, ${h}:" for the beginning or "Resuming <Title> where we left off, ${h}:" for resuming, followed by the marker [[READ_STORY:ID:START]] or [[READ_STORY:ID:RESUME]] accordingly. Replies that carry a marker must not end with a question, and this overrides any other instruction to end with a follow-up question. (6) Never include a marker unless the person has just accepted or named a story and, where required, chosen beginning or resume. Do not use Google Search or add references for story requests.`;
     }
     return instructions;
   }
@@ -2868,6 +2935,47 @@ function syncStoryBookHighlight(lineIdx) {
   flipToStoryPage(targetPage);
 }
 
+// --- Generalized Artifact & Notes Engine ---
+  
+function getArtifactContext(storageKey, identifier) {
+  const items = JSON.parse(localStorage.getItem(storageKey) || '[]');
+  const artifact = items.find(i => (i.name || i.title || '').toLowerCase() === identifier.toLowerCase());
+  return artifact ? `Active Context Reference (${storageKey}): ${JSON.stringify(artifact)}` : null;
+}
+
+function updateArtifactInStorage(storageKey, updatedArtifact) {
+  let items = JSON.parse(localStorage.getItem(storageKey) || '[]');
+  if (storageKey === LS_KEY_RECIPES) updatedArtifact.timestamp = Date.now();
+  let idx = items.findIndex(i => i.id === updatedArtifact.id);
+  if (idx === -1) idx = items.findIndex(i => (i.title || i.name || '').toLowerCase() === (updatedArtifact.title || updatedArtifact.name || '').toLowerCase());
+  if (idx !== -1) updatedArtifact.id = items[idx].id;
+  if (idx !== -1) {
+    items[idx] = updatedArtifact = { ...items[idx], ...updatedArtifact };
+    localStorage.setItem(storageKey, JSON.stringify(items));
+  } else {
+    items.push(updatedArtifact);
+    localStorage.setItem(storageKey, JSON.stringify(items));
+  }
+  if (storageKey === LS_KEY_RECIPES) {
+    state.recipes = items;
+    pushRecipeToCloud(updatedArtifact);
+  }
+}
+
+function addNoteToArtifact(storageKey, artifactId, noteText, outcomeText = '') {
+  let items = JSON.parse(localStorage.getItem(storageKey) || '[]');
+  const artifact = items.find(i => i.id === artifactId);
+  if (artifact) {
+    if (!artifact.notes) artifact.notes = [];
+    artifact.notes.push({
+      timestamp: Date.now(),
+      adjustment: noteText,
+      outcome: outcomeText
+    });
+    updateArtifactInStorage(storageKey, artifact);
+  }
+}
+
 let kitchenSousChef = {
   active: false,
   stepIndex: 0,
@@ -3221,6 +3329,29 @@ async function submitUserSuggestion() {
     silentAudio.play().catch(() => {});
   }
 
+  function applyArtifactUpdates(marker, lastBubble) {
+  const updateMatch = (marker || '').match(/\[UPDATE_ARTIFACT:({[\s\S]+})\]/);
+  if (updateMatch) {
+    try {
+      const data = JSON.parse(updateMatch[1]);
+      const storageKey = LS_KEY_RECIPES;
+      const artifact = data.artifact; // The full updated object
+      
+      updateArtifactInStorage(storageKey, artifact);
+      
+      // Visual confirmation for you, Sir
+      const confirm = document.createElement('div');
+      confirm.style.fontSize = '0.8em';
+      confirm.style.color = 'var(--brass-bright)';
+      confirm.textContent = `✓ Artifact "${artifact.name || artifact.title}" updated successfully.`;
+      lastBubble.appendChild(confirm);
+    } catch (e) {
+      console.error("Jeeves: Failed to harvest artifact update", e);
+    }
+  }
+}
+
+
   async function sendMessage(){
     primeAudioSession(); // Prime the session immediately
     stopListening();
@@ -3312,10 +3443,24 @@ async function submitUserSuggestion() {
     });
 
     const systemInstruction = buildSystemInstruction();
+    const modeStorageMap = { 'cooking': 'jeeves_recipes' };
+    const activeStorageKey = modeStorageMap[state.convoType];
+    let artifactContext = '';
+    
+    if (activeStorageKey) {
+      const focus = state.recipeFocus && state.recipeFocus.convoId === state.activeId ? state.recipeFocus.name : '';
+      const targetName = detectRecipeInPrompt(text) || focus;
+      if (targetName) state.recipeFocus = { convoId: state.activeId, name: targetName };
+      const context = getArtifactContext(activeStorageKey, targetName);
+      if (context) {
+        artifactContext = `\n\n${context}\n\nINSTRUCTION: This is a recipe the person has on file. When you suggest changes to it, do not rewrite the recipe. For each change, end your response with one marker of the form [PROPOSE_CHANGE:{"title":"<exact recipe title>","find":"<text copied verbatim from the recipe's text field>","replace":"<proposed replacement>","reason":"<one short sentence>"}]. Each marker must be valid single-line JSON, with line breaks inside strings written as \\n. Proposals are pencilled onto the card for the person to review, so do not repeat any in the proposals list with status pending. Only if the person explicitly tells you to make a change permanent here in the chat, end instead with [UPDATE_ARTIFACT:{"storageKey":"${activeStorageKey}", "artifact":{...full updated object...}}].`;
+      }
+    }
+
     const voiceConvoAddendum = isAutoSpeakEnabled
       ? ` You are currently in a spoken, hands-free conversation — the person is likely driving or otherwise occupied and cannot type or read. Keep this in mind: favor shorter, more conversational sentences over dense written prose, and never ask them to "see below," "click a link," or "read the references," since they cannot look at the screen right now. End your response with one brief, natural, inviting follow-up question so the conversation can continue turn by turn without them needing to touch the screen — the same instinct you already apply when offering to read out the references. Keep this question genuinely relevant to what was just discussed, not generic or tacked on, and ask only one.`
       : '';
-    const fullSystemInstruction = `Current date and time: ${now}. ${systemInstruction}${voiceConvoAddendum}; The date and time are already correct and already reflects your local time zone — never use Google Search to look up or double-check the date or time, and never substitute UTC or any other time zone for it. ${systemInstruction}`;
+    const fullSystemInstruction = `Current date and time: ${now}. ${systemInstruction}${artifactContext}${voiceConvoAddendum}; The date and time are already correct and already reflects your local time zone — never use Google Search to look up or double-check the date or time, and never substitute UTC or any other time zone for it. ${systemInstruction}`;
 
       if (!systemInstruction) throw new Error("System instruction is empty.");
       
@@ -3411,6 +3556,18 @@ async function submitUserSuggestion() {
         }
       }
 
+      const updateMarker = (fullText.match(/\[UPDATE_ARTIFACT:\{[\s\S]+\}\]/) || [])[0];
+      if (updateMarker) {
+        fullText = fullText.replace(updateMarker, '').trim();
+        renderMarkdownInto(modelBubble, fullText);
+      }
+
+      const proposalJsons = [...fullText.matchAll(/\[PROPOSE_CHANGE:(\{[\s\S]*?\})\]/g)].map(m => m[1]);
+      if (proposalJsons.length) {
+        fullText = fullText.replace(/\s*\[PROPOSE_CHANGE:\{[\s\S]*?\}\]/g, '').trim();
+        renderMarkdownInto(modelBubble, fullText);
+      }
+
       let storyToRead = null;
       const storyMarker = fullText.match(/\[\[READ_STORY:\s*([^\]]+?)\s*\]\]/);
       if (storyMarker) {
@@ -3465,7 +3622,9 @@ async function submitUserSuggestion() {
       if (usageMetadata) historyEntry.usage = usageMetadata;
       state.history.push(historyEntry);
       persistHistory();
+      applyArtifactUpdates(updateMarker, modelBubble);
       harvestNotesAndRecipes();
+      if (proposalJsons.length) applyRecipeProposals(proposalJsons, modelBubble);
 
       if (usageMetadata) {
         const meta = buildMetaLine(usageMetadata, usedModel, historyEntry.timestamp);
@@ -3965,6 +4124,7 @@ async function submitUserSuggestion() {
       if (aiTitle && aiTitle.length > 2) {
         recipe.title = aiTitle;
         recipe.category = categorizeRecipeText(aiTitle, recipe.text);
+        pushRecipeToCloud(recipe);
         try { localStorage.setItem(LS_KEY_RECIPES, JSON.stringify(state.recipes)); } catch(e){}
         const currentTitleEl = document.querySelector('.recipe-card-title');
         if (currentTitleEl && currentTitleEl.textContent === 'Culinary Creation') {
@@ -4285,6 +4445,173 @@ async function submitUserSuggestion() {
     return { front: text, back: 'No additional preparation notes recorded.' };
   }
 
+  function renderRecipeSide(text, recipe, searchTerm) {
+    const pending = (recipe.proposals || []).filter(p => p.status === 'pending');
+    const hits = pending
+      .map((p, i) => ({ p, n: i + 1, at: p.find ? text.indexOf(p.find) : -1 }))
+      .filter(h => h.at >= 0)
+      .sort((a, b) => a.at - b.at);
+    let out = '';
+    let pos = 0;
+    hits.forEach(({ p, n, at }) => {
+      if (at < pos) return;
+      const end = at + p.find.length;
+      out += highlightMatches(text.slice(pos, end), searchTerm)
+        + `<sup class="recipe-proposal-sup" data-pid="${escapeHtml(p.id)}" role="button" tabindex="0" title="Proposed change" style="cursor:pointer; color:var(--brass-bright); font-weight:700; margin-left:1px;">${n}</sup>`;
+      pos = end;
+    });
+    return out + highlightMatches(text.slice(pos), searchTerm);
+  }
+
+  function openProposalModal(recipe, pid, onDone) {
+    const p = (recipe.proposals || []).find(x => x.id === pid);
+    if (!p) return;
+    let modal = document.getElementById('proposal-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'proposal-modal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+    const box = 'white-space:pre-wrap; padding:8px 10px; border:1px solid var(--hairline); border-radius:6px; font-size:13px; margin:4px 0 12px;';
+    modal.innerHTML = `
+      <div class="modal" style="max-width:520px;">
+        <div class="modal-header">
+          <h2>Proposed Change</h2>
+          <button class="icon-btn" id="close-proposal-modal" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          ${p.reason ? `<p class="proposal-reason">${escapeHtml(p.reason)}</p>` : ''}
+          <div class="proposal-label">Currently</div>
+          <div class="proposal-box old">${escapeHtml(p.find)}</div>
+          <div class="proposal-label">Proposed</div>
+          <div class="proposal-box new">${escapeHtml(p.replace) || '<em>(removed)</em>'}</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="dismiss-proposal-btn" type="button">Dismiss</button>
+          <button class="btn-primary" id="accept-proposal-btn" type="button">Make Permanent</button>
+        </div>
+      </div>
+    `;
+    const finish = () => {
+      modal.classList.remove('open');
+      try { localStorage.setItem(LS_KEY_RECIPES, JSON.stringify(state.recipes)); } catch(e){}
+      pushRecipeToCloud(recipe);
+      onDone();
+    };
+    const resolve = (target, status) => { target.status = status; target.resolvedAt = Date.now(); };
+    modal.querySelector('#close-proposal-modal').onclick = () => modal.classList.remove('open');
+    modal.onclick = (e) => { if (e.target === modal) modal.classList.remove('open'); };
+    modal.querySelector('#dismiss-proposal-btn').onclick = () => {
+      resolve(p, 'dismissed');
+      finish();
+    };
+    modal.querySelector('#accept-proposal-btn').onclick = () => {
+      recipe.text = recipe.text.replace(p.find, () => p.replace);
+      resolve(p, 'accepted');
+      recipe.proposals.forEach(o => {
+        if (o.status === 'pending' && !recipe.text.includes(o.find)) resolve(o, 'superseded');
+      });
+      finish();
+    };
+    modal.classList.add('open');
+  }
+
+  function openRecipeBoxAt(recipeId) {
+    state.activeArchiveTab = 'recipes';
+    harvestNotesAndRecipes();
+    const idx = Math.max(0, state.recipes.findIndex(r => r.id === recipeId));
+    renderRecipeBox('', 'all', idx);
+  }
+
+  function applyRecipeProposals(jsonStrings, bubble) {
+    let added = 0;
+    let missed = 0;
+    let firstId = null;
+    jsonStrings.forEach((raw, i) => {
+      try {
+        const d = JSON.parse(raw);
+        if (!d.find || typeof d.replace !== 'string') { missed++; return; }
+        const titled = t => state.recipes.filter(r => (r.title || '').toLowerCase() === t);
+        const wanted = String(d.title || '').toLowerCase();
+        const focus = state.recipeFocus ? state.recipeFocus.name.toLowerCase() : '';
+        let recipe = null, at = null;
+        for (const r of [...titled(wanted), ...titled(focus)]) {
+          at = locateAnchor(r.text, d.find);
+          if (at) { recipe = r; break; }
+        }
+        if (!recipe) { missed++; return; }
+        if (!firstId) firstId = recipe.id;
+        if (!recipe.proposals) recipe.proposals = [];
+        recipe.proposals.push({ id: 'p_' + Date.now().toString(36) + i, find: recipe.text.slice(at.start, at.end), replace: d.replace, reason: d.reason || '', status: 'pending', created: Date.now() });
+        pushRecipeToCloud(recipe);
+        added++;
+      } catch (e) { missed++; }
+    });
+    try { localStorage.setItem(LS_KEY_RECIPES, JSON.stringify(state.recipes)); } catch(e){}
+    if (bubble && (added || missed)) {
+      const note = document.createElement('div');
+      note.style.cssText = 'font-size:0.8em; margin-top:8px;';
+      if (added) {
+        const link = document.createElement('a');
+        link.href = '#';
+        link.className = 'recipe-proposal-link';
+        link.setAttribute('role', 'button');
+        link.textContent = `✎ ${added} proposed change${added === 1 ? '' : 's'} pencilled onto the card in your Recipe Box.`;
+        link.addEventListener('click', (e) => { e.preventDefault(); openRecipeBoxAt(firstId); });
+        note.appendChild(link);
+      }
+      if (missed) note.appendChild(document.createTextNode(` ${missed} could not be matched to the recipe text.`));
+      bubble.appendChild(note);
+    }
+  }
+
+  function proposalSupHtml(p, n) {
+    return `<sup class="recipe-proposal-sup" data-pid="${escapeHtml(p.id)}" role="button" tabindex="0" title="Proposed change: tap to review" aria-label="Proposed change ${n}">${n}</sup>`;
+  }
+
+  function locateAnchor(text, find) {
+    if (!find) return null;
+    const exact = text.indexOf(find);
+    if (exact >= 0) return { start: exact, end: exact + find.length };
+    const tokens = find.trim().split(/\s+/).map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    if (!tokens.length || !tokens[0]) return null;
+    const m = new RegExp(tokens.join('\\s+'), 'i').exec(text);
+    return m ? { start: m.index, end: m.index + m[0].length } : null;
+  }
+
+  function renderRecipeSides(recipe, frontText, backText, searchTerm) {
+    const pending = (recipe.proposals || []).filter(p => p.status === 'pending');
+    const sides = [{ text: frontText, hits: [] }, { text: backText, hits: [] }];
+    const unplaced = [];
+    pending.forEach((p, i) => {
+      const n = i + 1;
+      for (const side of sides) {
+        const at = locateAnchor(side.text, p.find);
+        if (at) { side.hits.push({ p, n, at }); return; }
+      }
+      unplaced.push({ p, n });
+    });
+    const build = (side) => {
+      let out = '';
+      let pos = 0;
+      side.hits.sort((a, b) => a.at.start - b.at.start).forEach(({ p, n, at }) => {
+        if (at.start < pos) { unplaced.push({ p, n }); return; }
+        out += highlightMatches(side.text.slice(pos, at.start), searchTerm)
+          + '<span class="recipe-proposal-anchor">' + highlightMatches(side.text.slice(at.start, at.end), searchTerm) + '</span>'
+          + proposalSupHtml(p, n);
+        pos = at.end;
+      });
+      return out + highlightMatches(side.text.slice(pos), searchTerm);
+    };
+    const front = build(sides[0]);
+    const back = build(sides[1]);
+    const strip = unplaced.length
+      ? '<div class="recipe-proposal-unplaced">Proposed changes: ' + unplaced.sort((a, b) => a.n - b.n).map(u => proposalSupHtml(u.p, u.n)).join(' ') + '</div>'
+      : '';
+    return { front: front + strip, back };
+  }
+
   function renderRecipeBox(searchTerm = '', activeCategory = 'all', cardIdx = 0) {
     harvestNotesAndRecipes();
     ensureArchiveTabs();
@@ -4377,6 +4704,7 @@ async function submitUserSuggestion() {
       .join('');
 
     const { front: frontText, back: backText } = partitionRecipeSides(recipe.text);
+    const sides = renderRecipeSides(recipe, frontText, backText, searchTerm);
 
     card.innerHTML = `
       <!-- FRONT FACE -->
@@ -4389,7 +4717,7 @@ async function submitUserSuggestion() {
           <select class="recipe-cat-select" title="Re-categorize dish">${catOptions}</select>
           <button type="button" class="recipe-discard-btn" title="Discard recipe">✕</button>
         </div>
-        <div class="recipe-card-body">${highlightMatches(frontText, searchTerm)}</div>
+        <div class="recipe-card-body">${sides.front}</div>
         <div class="recipe-card-footer">
           <span>${new Date(recipe.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>
           <button type="button" class="copy-recipe-btn archive-btn" style="padding:2px 8px; font-size:11px;">Copy Recipe</button>
@@ -4407,7 +4735,7 @@ async function submitUserSuggestion() {
           <button type="button" class="recipe-discard-btn" title="Discard recipe">✕</button>
         </div>
 
-        <div class="recipe-card-body">${highlightMatches(backText, searchTerm)}</div>
+        <div class="recipe-card-body">${sides.back}</div>
         <div class="recipe-card-footer">
           <span>Card ${currentIdx + 1} of ${recipes.length} (Back)</span>
           <button type="button" class="copy-recipe-btn archive-btn" style="padding:2px 8px; font-size:11px;">Copy Recipe</button>
@@ -4445,6 +4773,7 @@ async function submitUserSuggestion() {
       const val = titleInput.value.trim();
       if (val && val !== recipe.title) {
         recipe.title = val;
+        pushRecipeToCloud(recipe);
         try { localStorage.setItem(LS_KEY_RECIPES, JSON.stringify(state.recipes)); } catch(e){}
       }
     };
@@ -4456,6 +4785,7 @@ async function submitUserSuggestion() {
     // Save Category Modifications on Change
     card.querySelector('.recipe-cat-select')?.addEventListener('change', (e) => {
       recipe.category = e.target.value;
+      pushRecipeToCloud(recipe);
       try { localStorage.setItem(LS_KEY_RECIPES, JSON.stringify(state.recipes)); } catch(err){}
       renderRecipeBox(searchTerm, activeCategory, currentIdx);
     });
@@ -4477,6 +4807,7 @@ async function submitUserSuggestion() {
         e.stopPropagation();
         if (confirm(`Discard "${recipe.title}" from the Recipe Box, ${state.honorific}?`)) {
           state.deletedHarvestIds.push(recipe.id);
+          deleteRecipeFromCloud(recipe.id);
           state.recipes = state.recipes.filter(r => r.id !== recipe.id);
           try {
             localStorage.setItem(LS_KEY_DELETED_HARVESTS, JSON.stringify(state.deletedHarvestIds));
@@ -4507,6 +4838,19 @@ async function submitUserSuggestion() {
         renderRecipeBox(searchTerm, activeCategory, Math.max(0, currentIdx - 1));
       }
     };
+
+    card.addEventListener('click', (e) => {
+      const sup = e.target.closest('.recipe-proposal-sup');
+      if (!sup) return;
+      e.stopPropagation();
+      openProposalModal(recipe, sup.dataset.pid, () => renderRecipeBox(searchTerm, activeCategory, currentIdx));
+    });
+    card.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('recipe-proposal-sup')) {
+        e.preventDefault();
+        e.target.click();
+      }
+    });
 
     stage.appendChild(card);
     boxWrap.appendChild(stage);
@@ -5866,4 +6210,10 @@ ${numbered}`;
   if (!state.apiKey) {
     setTimeout(() => { if (!state.apiKey) openModal(); }, 2500);
   }
+  function detectRecipeInPrompt(text) {
+    const recipes = JSON.parse(localStorage.getItem('jeeves_recipes') || '[]');
+    const found = recipes.find(r => r.title && text.toLowerCase().includes(r.title.toLowerCase()));
+    return found ? found.title : '';
+  }
+
 })();
