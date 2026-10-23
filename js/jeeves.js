@@ -1736,6 +1736,35 @@
     scrollToBottom();
   }
 
+  function describeRecipeAge(ts) {
+    const days = Math.floor((Date.now() - (ts || 0)) / 86400000);
+    if (days <= 0) return 'today';
+    if (days === 1) return 'yesterday';
+    if (days < 14) return `${days} days ago`;
+    if (days < 60) return `${Math.round(days / 7)} weeks ago`;
+    return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  function buildRecipeCatalog() {
+    return (state.recipes || []).slice(0, 60).map(r => {
+      const snippet = (r.text || '').replace(/\s+/g, ' ').replace(/^ingredients:?\s*/i, '').slice(0, 90);
+      const pending = (r.proposals || []).filter(p => p.status === 'pending').length;
+      const note = pending ? `, ${pending} pending proposed change${pending === 1 ? '' : 's'}` : '';
+      return `- ID ${r.id}: "${r.title}" (${r.category || 'uncategorised'}, last updated ${describeRecipeAge(r.timestamp)}${note}) begins: ${snippet}`;
+    }).join('\n');
+  }
+
+  function recipeOriginExcerpt(convo, recipe) {
+    const turns = (convo.history || []).filter(t => t && Array.isArray(t.parts));
+    const key = (recipe.text || '').slice(0, 40);
+    let at = turns.findIndex(t => t.role === 'model' && t.parts.some(p => p.text && p.text.includes(key)));
+    if (at < 0) at = turns.length - 1;
+    return turns.slice(Math.max(0, at - 6), at + 7).map(t => {
+      const body = t.parts.map(p => p.text || '').join(' ').trim().slice(0, 1500);
+      return `${t.role === 'user' ? 'Person' : 'Jeeves'}: ${body}`;
+    }).join('\n');
+  }
+
   // ---------- Persona ----------
   function buildSystemInstruction(){
     const h = (state.honorific || 'Sir').trim() || 'Sir';
@@ -1755,8 +1784,8 @@
     } else if (state.convoType === 'general') {
       instructions += `\n- You are in 'General Conversation' mode. If you provide any draft text (emails, messages, search terms, quotes, etc.), please present the final result within a \`\`\`copy block for easy copying.`;
     } else if (state.convoType === 'cooking') {
-      instructions += `\n- Recipe Box titles on file: ${(state.recipes || []).map(r => '"' + r.title + '"').join(', ') || 'none yet'}. When the person refers to one, its full text will be supplied to you.`;
-      instructions += `\n- You are in 'Culinary Advice' mode. Justify your recommendations by referring to reputable cooking blogs or resources by name (e.g. "Serious Eats", "Kenji López-Alt's method"). Use Google Search to find these sources. Do NOT type out URLs yourself — the application will automatically append a verified list of the sources you found via search beneath your answer, so simply mention sources by name in your prose. After explaining the suggestion, if there's enough information in the conversation to compose an entire recipe, put the entirety in a code block for easy copying, divided into Ingredients and Methods. In the Methods, you must include the quantity of each ingredient directly inline within the instruction steps, formatted as: "In a bowl, whisk eggs (8-10 large) with milk (1c), salt (1/2tsp), and pepper (1/4tsp)."`;
+      instructions += `\n- Recipe Box catalogue (most recent first):\n${buildRecipeCatalog() || '(empty)'}\n  RECIPE PROTOCOL: (1) When the person refers to a recipe from their box, even loosely ("that gnocchi from last week"), match it against the catalogue using the titles, ingredients and dates. (2) If exactly one recipe plausibly fits, reply with one short sentence naming it, such as "Very good, ${h}, the <Title>. What would you like to adjust?", followed by the marker [[OPEN_RECIPE:ID]]. (3) If more than one fits, name the candidates by title and ask which they mean, with no marker. If none fits, say so and ask for more detail, with no marker. (4) Never include a marker unless you are certain which single recipe is meant, and never invent an ID. (5) Once a recipe has been opened, its full text and the conversation in which it was made are supplied to you; discuss changes then. If the person turns to a different recipe, repeat this protocol.`;
+      instructions += `\n- You are in 'Culinary Advice' mode. Justify your recommendations by referring to reputable cooking blogs or resources by name (e.g. "Serious Eats", "Kenji López-Alt's method"). Use Google Search to find these sources. Do NOT type out URLs yourself — the application will automatically append a verified list of the sources you found via search beneath your answer, so simply mention sources by name in your prose. After explaining the suggestion, if there's enough information in the conversation to compose an entire recipe, put the entirety in a code block for easy copying, divided into Ingredients and Methods. Begin the code block with the recipe's title on its own first line, then a line reading "Servings: N" (the number of servings the recipe makes, with a short note if it is better expressed otherwise, such as "Servings: 4 (about 2 cups of sauce)"), then the Ingredients and Methods. Always include the servings line, and if the person asks you to scale a recipe, update it. In the Methods, you must include the quantity of each ingredient directly inline within the instruction steps, formatted as: "In a bowl, whisk eggs (8-10 large) with milk (1c), salt (1/2tsp), and pepper (1/4tsp)."`;
     } else if (state.convoType === 'research') {
       instructions += `\n- You are in 'Research Assistance' mode. You MUST strictly follow this citation format:
       1. Cite every claim inline with a footnote marker [1] placed immediately after the punctuation.
@@ -3448,10 +3477,13 @@ async function submitUserSuggestion() {
     let artifactContext = '';
     
     if (activeStorageKey) {
-      const focus = state.recipeFocus && state.recipeFocus.convoId === state.activeId ? state.recipeFocus.name : '';
-      const targetName = detectRecipeInPrompt(text) || focus;
-      if (targetName) state.recipeFocus = { convoId: state.activeId, name: targetName };
-      const context = getArtifactContext(activeStorageKey, targetName);
+      const exact = detectRecipeInPrompt(text);
+      const exactRecipe = exact ? state.recipes.find(r => (r.title || '').toLowerCase() === exact.toLowerCase()) : null;
+      if (exactRecipe) state.recipeFocus = { convoId: state.activeId, id: exactRecipe.id, name: exactRecipe.title };
+      const focused = state.recipeFocus && state.recipeFocus.convoId === state.activeId ? state.recipes.find(r => r.id === state.recipeFocus.id) : null;
+      const origin = focused ? state.conversations.find(c => c.id === focused.convoId && c.id !== state.activeId) : null;
+      const pastTalk = origin ? recipeOriginExcerpt(origin, focused) : '';
+      const context = focused ? `Active Context Reference (${activeStorageKey}): ${JSON.stringify(focused)}${pastTalk ? `\n\nEarlier conversation in which this recipe was made or discussed, for reference:\n${pastTalk}` : ''}` : null;
       if (context) {
         artifactContext = `\n\n${context}\n\nINSTRUCTION: This is a recipe the person has on file. When you suggest changes to it, do not rewrite the recipe. For each change, end your response with one marker of the form [PROPOSE_CHANGE:{"title":"<exact recipe title>","find":"<text copied verbatim from the recipe's text field>","replace":"<proposed replacement>","reason":"<one short sentence>"}]. Each marker must be valid single-line JSON, with line breaks inside strings written as \\n. Proposals are pencilled onto the card for the person to review, so do not repeat any in the proposals list with status pending. Only if the person explicitly tells you to make a change permanent here in the chat, end instead with [UPDATE_ARTIFACT:{"storageKey":"${activeStorageKey}", "artifact":{...full updated object...}}].`;
       }
@@ -3566,6 +3598,14 @@ async function submitUserSuggestion() {
       if (proposalJsons.length) {
         fullText = fullText.replace(/\s*\[PROPOSE_CHANGE:\{[\s\S]*?\}\]/g, '').trim();
         renderMarkdownInto(modelBubble, fullText);
+      }
+
+      const openMarker = fullText.match(/\[\[OPEN_RECIPE:\s*([^\]\s]+)\s*\]\]/);
+      if (openMarker) {
+        fullText = fullText.replace(/\s*\[\[OPEN_RECIPE:[^\]]*\]\]/g, '').trim();
+        renderMarkdownInto(modelBubble, fullText);
+        const opened = state.recipes.find(r => r.id === openMarker[1]);
+        if (opened) state.recipeFocus = { convoId: state.activeId, id: opened.id, name: opened.title };
       }
 
       let storyToRead = null;
@@ -4549,7 +4589,7 @@ async function submitUserSuggestion() {
       } catch (e) { missed++; }
     });
     try { localStorage.setItem(LS_KEY_RECIPES, JSON.stringify(state.recipes)); } catch(e){}
-    if (bubble && (added || missed)) {
+        if (bubble && (added || missed)) {
       const note = document.createElement('div');
       note.style.cssText = 'font-size:0.8em; margin-top:8px;';
       if (added) {
@@ -4720,6 +4760,7 @@ async function submitUserSuggestion() {
         <div class="recipe-card-body">${sides.front}</div>
         <div class="recipe-card-footer">
           <span>${new Date(recipe.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+          <button type="button" class="edit-recipe-btn archive-btn" style="padding:2px 8px; font-size:11px;">Edit Text</button>
           <button type="button" class="copy-recipe-btn archive-btn" style="padding:2px 8px; font-size:11px;">Copy Recipe</button>
           <span>Card ${currentIdx + 1} of ${recipes.length} (Front)</span>
         </div>
@@ -4788,6 +4829,66 @@ async function submitUserSuggestion() {
       pushRecipeToCloud(recipe);
       try { localStorage.setItem(LS_KEY_RECIPES, JSON.stringify(state.recipes)); } catch(err){}
       renderRecipeBox(searchTerm, activeCategory, currentIdx);
+    });
+
+    card.querySelector('.edit-recipe-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const face = card.querySelector('.recipe-card-face.front');
+      const body = face.querySelector('.recipe-card-body');
+      const footer = face.querySelector('.recipe-card-footer');
+      const ta = document.createElement('textarea');
+      ta.className = 'recipe-text-editor';
+      ta.value = recipe.text;
+      ta.setAttribute('aria-label', 'Recipe text');
+      const bar = face.querySelector('.recipe-card-top-bar');
+      const btnH = 30;
+      const byFace = face.offsetHeight - (bar ? bar.offsetHeight : 0) - footer.offsetHeight - btnH * 2 - 16;
+      const byScreen = window.innerHeight - body.getBoundingClientRect().top - footer.offsetHeight - btnH * 2 - 32;
+      const fitH = Math.max(120, Math.min(byFace, byScreen));
+      ta.style.cssText = `display:block; width:100%; height:${fitH}px; min-height:0; box-sizing:border-box; resize:none; overflow-y:auto; overscroll-behavior:contain; touch-action:pan-y; font:inherit; line-height:1.5; padding:8px; background:transparent; color:inherit; border:1px dashed currentColor;`;
+      ta.addEventListener('wheel', (ev) => {
+        if (ta.scrollHeight <= ta.clientHeight) return;
+        ta.scrollTop += ev.deltaY * (ev.deltaMode === 1 ? 16 : 1);
+        ev.preventDefault();
+        ev.stopPropagation();
+      }, { passive: false });
+      const scrollBtn = (arrow, label, dir) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'archive-btn';
+        b.style.cssText = `display:block; width:100%; height:${btnH}px; padding:0; font-size:11px;`;
+        b.innerHTML = `<span aria-hidden="true">${arrow}</span> ${label}`;
+        b.onclick = (ev) => { ev.stopPropagation(); ta.scrollBy({ top: dir * Math.max(40, ta.clientHeight * 0.8), behavior: 'smooth' }); };
+        return b;
+      };
+      body.replaceChildren(scrollBtn('▲', 'Scroll up', -1), ta, scrollBtn('▼', 'Scroll down', 1));
+      footer.innerHTML = '';
+      const mk = (label, fn) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'archive-btn';
+        b.style.cssText = 'padding:2px 10px; font-size:11px;';
+        b.textContent = label;
+        b.onclick = (ev) => { ev.stopPropagation(); fn(); };
+        return b;
+      };
+      footer.append(
+        mk('Save', () => {
+          const val = ta.value.replace(/\s+$/, '');
+          if (val.trim() && val !== recipe.text) {
+            recipe.text = val;
+            pushRecipeToCloud(recipe);
+            try { localStorage.setItem(LS_KEY_RECIPES, JSON.stringify(state.recipes)); } catch(err){}
+          }
+          renderRecipeBox(searchTerm, activeCategory, currentIdx);
+        }),
+        mk('Cancel', () => renderRecipeBox(searchTerm, activeCategory, currentIdx))
+      );
+      const down = body.lastElementChild;
+      const room = Math.min(footer.getBoundingClientRect().top, window.innerHeight - 16) - ta.getBoundingClientRect().top;
+      const downCs = getComputedStyle(down);
+      ta.style.height = Math.max(100, room - down.offsetHeight - (parseFloat(downCs.marginTop) || 0) - (parseFloat(downCs.marginBottom) || 0) - 8) + 'px';
+      ta.focus();
     });
 
     // Copy Handler on Front & Back
@@ -6056,6 +6157,7 @@ ${numbered}`;
 
   document.getElementById('convo-type')?.addEventListener('change', (e) => {
     state.convoType = e.target.value;
+    try { localStorage.setItem('jeeves_convo_type', state.convoType); } catch(err){}
   });
 
   // Listen for changes within the dynamic API key list
@@ -6200,6 +6302,12 @@ ${numbered}`;
   window.addEventListener('scroll', () => {
     if (window.scrollX !== 0) window.scrollTo(0, window.scrollY);
   }, { passive: true });
+  const savedConvoType = localStorage.getItem('jeeves_convo_type');
+  const convoTypeEl = document.getElementById('convo-type');
+  if (savedConvoType && convoTypeEl && [...convoTypeEl.options].some(o => o.value === savedConvoType)) {
+    state.convoType = savedConvoType;
+    convoTypeEl.value = savedConvoType;
+  }
   initBlankScreenMode();
   harvestNotesAndRecipes();
   replayHistory();
@@ -6216,5 +6324,4 @@ ${numbered}`;
     const found = recipes.find(r => r.title && text.toLowerCase().includes(r.title.toLowerCase()));
     return found ? found.title : '';
   }
-
 })();
