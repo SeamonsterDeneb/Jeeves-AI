@@ -4761,6 +4761,7 @@ async function submitUserSuggestion() {
         <div class="recipe-card-footer">
           <span>${new Date(recipe.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>
           <button type="button" class="edit-recipe-btn archive-btn" style="padding:2px 8px; font-size:11px;">Edit Text</button>
+          ${(recipe.proposals || []).length ? '<button type="button" class="history-recipe-btn archive-btn" style="padding:2px 8px; font-size:11px;">History</button>' : ''}
           <button type="button" class="copy-recipe-btn archive-btn" style="padding:2px 8px; font-size:11px;">Copy Recipe</button>
           <span>Card ${currentIdx + 1} of ${recipes.length} (Front)</span>
         </div>
@@ -4889,6 +4890,57 @@ async function submitUserSuggestion() {
       const downCs = getComputedStyle(down);
       ta.style.height = Math.max(100, room - down.offsetHeight - (parseFloat(downCs.marginTop) || 0) - (parseFloat(downCs.marginBottom) || 0) - 8) + 'px';
       ta.focus();
+    });
+
+    card.querySelector('.history-recipe-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const opener = e.currentTarget;
+      const fmt = (ts) => ts ? new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+      const label = { accepted: 'Accepted', dismissed: 'Dismissed', superseded: 'Superseded', pending: 'Pending' };
+      const rows = [...(recipe.proposals || [])]
+        .sort((a, b) => (b.resolvedAt || b.created || 0) - (a.resolvedAt || a.created || 0))
+        .map(p => {
+          const when = fmt(p.resolvedAt || p.created);
+          return `<li style="margin:0 0 14px; padding:0 0 12px; border-bottom:1px solid var(--hairline);">
+            <strong>${label[p.status] || escapeHtml(p.status || '')}</strong>${when ? ' · ' + when : ''}
+            <div class="field-help" style="margin-top:6px;">Was</div>
+            <div style="white-space:pre-wrap; font-size:13px;">${escapeHtml(p.find)}</div>
+            <div class="field-help" style="margin-top:6px;">Now</div>
+            <div style="white-space:pre-wrap; font-size:13px;">${escapeHtml(p.replace) || '<em>(removed)</em>'}</div>
+            ${p.reason ? `<p class="field-help" style="margin:6px 0 0;"><em>${escapeHtml(p.reason)}</em></p>` : ''}
+          </li>`;
+        }).join('');
+      let modal = document.getElementById('history-modal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'history-modal';
+        modal.className = 'modal-overlay';
+        document.body.appendChild(modal);
+      }
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-label', 'Adjustment history');
+      modal.innerHTML = `
+        <div class="modal" style="max-width:520px;">
+          <div class="modal-header">
+            <h2>Adjustments: ${escapeHtml(recipe.title)}</h2>
+            <button class="icon-btn" id="close-history-modal" type="button" aria-label="Close">✕</button>
+          </div>
+          <div class="modal-body" style="max-height:60vh; overflow-y:auto;">
+            <ul style="list-style:none; margin:0; padding:0;">${rows}</ul>
+          </div>
+        </div>`;
+      const close = () => {
+        modal.classList.remove('open');
+        document.removeEventListener('keydown', onKey);
+        opener.focus();
+      };
+      const onKey = (ev) => { if (ev.key === 'Escape') close(); };
+      document.addEventListener('keydown', onKey);
+      modal.onclick = (ev) => { if (ev.target === modal) close(); };
+      modal.querySelector('#close-history-modal').onclick = close;
+      modal.classList.add('open');
+      modal.querySelector('#close-history-modal').focus();
     });
 
     // Copy Handler on Front & Back
