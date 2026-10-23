@@ -4481,11 +4481,11 @@ async function submitUserSuggestion() {
           <button class="icon-btn" id="close-proposal-modal" aria-label="Close">✕</button>
         </div>
         <div class="modal-body">
-          ${p.reason ? `<p class="proposal-reason">${escapeHtml(p.reason)}</p>` : ''}
-          <div class="proposal-label">Currently</div>
-          <div class="proposal-box old">${escapeHtml(p.find)}</div>
-          <div class="proposal-label">Proposed</div>
-          <div class="proposal-box new">${escapeHtml(p.replace) || '<em>(removed)</em>'}</div>
+          ${p.reason ? `<p class="field-help" style="margin-bottom:12px;">${escapeHtml(p.reason)}</p>` : ''}
+          <div class="field-help">Currently</div>
+          <div style="${box} text-decoration:line-through; opacity:0.75;">${escapeHtml(p.find)}</div>
+          <div class="field-help">Proposed</div>
+          <div style="${box}">${escapeHtml(p.replace) || '<em>(removed)</em>'}</div>
         </div>
         <div class="modal-footer">
           <button class="btn-secondary" id="dismiss-proposal-btn" type="button">Dismiss</button>
@@ -4567,7 +4567,7 @@ async function submitUserSuggestion() {
   }
 
   function proposalSupHtml(p, n) {
-    return `<sup class="recipe-proposal-sup" data-pid="${escapeHtml(p.id)}" role="button" tabindex="0" title="Proposed change: tap to review" aria-label="Proposed change ${n}">${n}</sup>`;
+    return `<sup style="color:var(--brass-bright);"><a href="#" class="footnote-ref recipe-proposal-sup" data-pid="${escapeHtml(p.id)}" title="Proposed change: tap to review" aria-label="Proposed change ${n}">${n}</a></sup>`;
   }
 
   function locateAnchor(text, find) {
@@ -4842,6 +4842,7 @@ async function submitUserSuggestion() {
     card.addEventListener('click', (e) => {
       const sup = e.target.closest('.recipe-proposal-sup');
       if (!sup) return;
+      e.preventDefault();
       e.stopPropagation();
       openProposalModal(recipe, sup.dataset.pid, () => renderRecipeBox(searchTerm, activeCategory, currentIdx));
     });
