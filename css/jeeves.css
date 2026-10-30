@@ -557,12 +557,18 @@ main#chat {
   }
   .composer-label-row{
     display:flex;
+    flex-wrap:wrap;
     align-items:baseline;
     justify-content:space-between;
     max-width:860px;
     margin:0 auto 6px;
     padding:0 4px;
-    gap:12px;
+    gap:4px 12px;
+  }
+  #suggestion-banner-container{
+    order:-1;
+    width:100%;
+    margin-bottom:4px;
   }
   .composer-label-row label[for="input"]{
     font-size:12px;
@@ -1513,6 +1519,7 @@ main#chat {
     border-radius:10px;
     padding:8px 10px;
   }
+
   #close-archives {
     font-size: 30px !important;
     width: 40px !important;
@@ -2547,6 +2554,30 @@ main#chat {
       margin-right: 10px;
       margin-left: auto;
     }
+    .msg-row .bubble{ position:relative; }
+    .msg-exclude-btn{
+      position:absolute;
+      top:4px;
+      right:6px;
+      background:none;
+      border:none;
+      color:var(--parchment-dim);
+      font-size:14px;
+      line-height:1;
+      padding:2px 4px;
+      cursor:pointer;
+      opacity:0;
+      transition:opacity .15s ease, color .15s ease;
+    }
+    .msg-row:hover .msg-exclude-btn,
+    .msg-row.excluded .msg-exclude-btn{ opacity:0.6; }
+    .msg-exclude-btn:hover{ opacity:1; color:var(--brass-bright); }
+    .msg-row.excluded .bubble{
+      opacity:0.42;
+      filter:grayscale(85%);
+      border-style:dashed;
+    }
+
 
     /* Stack archive tabs into two tiers with classic flat-bottom tab geometry */
     .archive-tab-nav {

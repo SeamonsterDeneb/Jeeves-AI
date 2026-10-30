@@ -125,6 +125,8 @@
     set apiKey(v) { /* read-only; edit state.apiKeys instead */ },
   };
   
+  state.apiKey = (state.apiKeys[state.activeKeyIndex] || state.apiKeys[0] || {}).key || '';
+
   // Migrate legacy string-based overrides to object-based overrides
   Object.keys(state.modelOverrides).forEach(mode => {
     if (typeof state.modelOverrides[mode] === 'string') {
@@ -1415,12 +1417,13 @@
   
   function addUserMessage(text, imageDataUrl){
     const { row, bubble } = messageRow('user');
-    if (imageDataUrl) {
+    const urls = Array.isArray(imageDataUrl) ? imageDataUrl : (imageDataUrl ? [imageDataUrl] : []);
+    urls.forEach(url => {
       const img = document.createElement('img');
-      img.src = imageDataUrl;
+      img.src = url;
       img.className = 'bubble-img';
       bubble.appendChild(img);
-    }
+    });
     if (text) {
       const txtSpan = document.createElement('span');
       txtSpan.textContent = text;
@@ -1719,7 +1722,9 @@
       const imagePart = (turn.parts || []).find(p => p.inlineData || p.inline_data);
       const text = textPart ? textPart.text : '';
       const imgData = imagePart ? (imagePart.inlineData || imagePart.inline_data) : null;
-      const imgUrl = imgData ? `data:${imgData.mimeType || imgData.mime_type};base64,${imgData.data}` : null;
+      const imgUrl = (turn.images && turn.images.length)
+        ? turn.images
+        : (imgData ? `data:${imgData.mimeType || imgData.mime_type};base64,${imgData.data}` : null);
 
       if (turn.role === 'user'){
         addUserMessage(text, imgUrl);
@@ -3106,7 +3111,7 @@ function listenForSuggestions() {
         if (isOwner && unresolved.length > 0) {
           const honorific = state.honorific || 'Sir';
           suggestionLink.textContent = `Would you like to implement one of the feature suggestions, ${honorific}?`;
-          bannerContainer.style.display = 'inline-block';
+          bannerContainer.style.display = 'block';
           suggestionLink.onclick = (e) => {
             e.preventDefault();
             openModal();
@@ -3230,6 +3235,7 @@ async function submitUserSuggestion() {
         if (!turn) return turn;
         const sanitizedTurn = { ...turn };
         if (Array.isArray(sanitizedTurn.parts)) {
+          sanitizedTurn.parts = stripImageParts(sanitizedTurn.parts, sanitizedTurn.imageDescriptions);
           sanitizedTurn.parts = sanitizedTurn.parts.map(p => {
             if (!p) return p;
             const cleanPart = { ...p };
@@ -3239,14 +3245,14 @@ async function submitUserSuggestion() {
             if (cleanPart.inline_data && cleanPart.inline_data.data) {
               cleanPart.inline_data = { mime_type: cleanPart.inline_data.mime_type, data: '' };
             }
-            if (typeof cleanPart.text === 'string' && cleanPart.text.length > 40000) {
-              cleanPart.text = cleanPart.text.slice(0, 4000) + '\n\n[…Large attachment truncated for cloud backup…]';
+            if (state.persona !== 'coder' && typeof cleanPart.text === 'string' && cleanPart.text.length > 500000) {
+              cleanPart.text = cleanPart.text.slice(0, 500000) + '\n\n[…Large attachment truncated for cloud backup…]';
             }
             return cleanPart;
           });
         }
-        if (typeof sanitizedTurn.text === 'string' && sanitizedTurn.text.length > 40000) {
-          sanitizedTurn.text = sanitizedTurn.text.slice(0, 4000) + '\n\n[…Large text truncated for cloud backup…]';
+        if (state.persona !== 'coder' && typeof sanitizedTurn.text === 'string' && sanitizedTurn.text.length > 500000) {
+          sanitizedTurn.text = sanitizedTurn.text.slice(0, 500000) + '\n\n[…Large text truncated for cloud backup…]';
         }
         return sanitizedTurn;
       });
@@ -3278,12 +3284,31 @@ async function submitUserSuggestion() {
     }
   }
 
+    function stripImageParts(parts, descriptions) {
+    const isImage = p => p && (p.inlineData || p.inline_data);
+    if (!parts.some(isImage)) return parts;
+    const kept = parts.filter(p => !isImage(p));
+    const described = (descriptions || []).filter(Boolean);
+    const note = described.length
+      ? described.map((d, i) => `[Image ${i + 1} (description generated automatically): ${d}]`).join('\n')
+      : '[Image removed to save space]';
+    const target = kept.find(p => p.text);
+    if (target) return kept.map(p => p === target ? { ...p, text: note + ' ' + p.text } : p);
+    return [{ text: note }, ...kept];
+  }
+
+  function conversationsForStorage() {
+    return JSON.stringify(state.conversations, function(key, value) {
+      return (key === 'parts' && Array.isArray(value)) ? stripImageParts(value, this.imageDescriptions) : value;
+    });
+  }
+
   function persistHistory(){
     const idx = state.conversations.findIndex(c => c.id === state.activeId);
     if (idx !== -1) {
       state.conversations[idx].history = state.history;
       state.conversations[idx].updatedAt = Date.now();
-      try { localStorage.setItem(LS_KEY_CONVERSATIONS, JSON.stringify(state.conversations)); } catch(e){}
+      try { localStorage.setItem(LS_KEY_CONVERSATIONS, conversationsForStorage()); } catch(e){}
     }
     try { localStorage.setItem(LS_KEY_ACTIVE, state.activeId); } catch(e){}
 
@@ -3380,6 +3405,36 @@ async function submitUserSuggestion() {
   }
 }
 
+  async function describeTurnImages(turn, userText) {
+    const images = turn.parts.filter(p => p.inlineData);
+    const key = getKeyForConvoType('general');
+    if (!images.length || !key) return;
+    const url = `https://generativelanguage.googleapis.com/v1beta/${getModelForConvoType('general')}:generateContent?key=${encodeURIComponent(key)}`;
+
+    const descriptions = [];
+    for (const img of images) {
+      try {
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [
+              img,
+              { text: `Describe this image thoroughly so that an assistant who cannot see it could answer detailed follow-up questions. Transcribe any visible text, code, error messages, numbers and interface labels exactly. Note layout, colors, and anything notable. The user attached it with this message: "${userText || '(no message)'}". Return only the description.` }
+            ] }],
+            generationConfig: { temperature: 0.2, maxOutputTokens: 2000 }
+          })
+        });
+        if (!resp.ok) { console.warn('Image description failed:', resp.status, await resp.text()); descriptions.push(''); continue; }
+        const data = await resp.json();
+        descriptions.push((data.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('').trim());
+      } catch (e) { console.warn('Image description error:', e); descriptions.push(''); }
+    }
+    if (descriptions.some(Boolean)) {
+      turn.imageDescriptions = descriptions;
+      persistHistory();
+    }
+  }
 
   async function sendMessage(){
     primeAudioSession(); // Prime the session immediately
@@ -3437,9 +3492,18 @@ async function submitUserSuggestion() {
     if (text) userParts.push({ text });
 
 
-    state.history.push({ role: 'user', parts: userParts });
+    const imageAttachments = currentAttachments.filter(a => a.type === 'image');
+    const userTurn = {
+      role: 'user',
+      parts: userParts,
+      images: imageAttachments.map(a => a.dataUrl)
+    };
+    state.history.push(userTurn);
+    addUserMessage(text, userTurn.images);
+    if (imageAttachments.length > 0) {
+      await describeTurnImages(userTurn, text);
+    }
     persistHistory();
-    addUserMessage(text, currentAttachments.find(a => a.type === 'image')?.dataUrl);
 
     const usedModel = getModelForConvoType(state.convoType);
     const { bubble: modelBubble, phrase: stallPhrase } = addModelMessagePlaceholder();
@@ -3453,7 +3517,11 @@ async function submitUserSuggestion() {
     await new Promise(resolve => setTimeout(resolve, 1500));
 
 
-    const contextMessages = state.history.slice(-MAX_TURNS_SENT).map(t => ({ role: t.role, parts: t.parts }));
+    const recentTurns = state.history.slice(-MAX_TURNS_SENT);
+    const contextMessages = recentTurns.map((t, i) => ({
+      role: t.role,
+      parts: i === recentTurns.length - 1 ? t.parts : stripImageParts(t.parts, t.imageDescriptions)
+    }));
 
     try {
           // Waking the voice for mobile browsers
@@ -3505,6 +3573,7 @@ async function submitUserSuggestion() {
       };
 
       body.tools = [{ googleSearch: {} }];
+      console.log('Jeeves context:', contextMessages.map((m, i) => ({ i, role: m.role, parts: m.parts.map(p => p.inlineData ? `IMAGE (${Math.round(p.inlineData.data.length / 1024)} KB)` : (p.text || '').slice(0, 120)) })));
 
       const resp = await fetch(url, {
         method: 'POST',
@@ -6022,8 +6091,8 @@ ${numbered}`;
           <input type="text" class="archive-input" value="${escapeHtml(c.title)}" aria-label="Conversation title">
           <div class="archive-timestamp">${escapeHtml(stamp)}</div>
         </div>
-        <button tabindex="0" class="archive-btn delete-btn tooltip-btn" data-tooltip="Delete conversation" type="button" aria-label="Delete conversation" style="background:var(--claret); color:white; margin-left:4px;">✕</button>
-        <button tabindex="0" class="archive-btn open-btn tooltip-btn" data-tooltip="Open conversation" type="button" aria-label="${c.id === state.activeId ? 'Current conversation' : 'Open conversation'}">${c.id === state.activeId ? 'Current' : 'Open'}</button>
+        <button tabindex="0" class="archive-btn delete-btn" type="button" aria-label="Delete conversation" style="background:var(--claret); color:white; margin-left:4px;">✕</button>
+        <button tabindex="0" class="archive-btn open-btn" type="button" aria-label="${c.id === state.activeId ? 'Current conversation' : 'Open conversation'}">${c.id === state.activeId ? 'Current' : 'Open'}</button>
       `;
 
       row.querySelector('.archive-input').addEventListener('blur', (e) => renameConversation(c.id, e.target.value));
@@ -6090,23 +6159,12 @@ ${numbered}`;
   }
 
   document.getElementById('new-chat-btn')?.addEventListener('click', startNewChat);
-  document.getElementById('archive-btn')?.addEventListener('click', async () => {
+  document.getElementById('archive-btn')?.addEventListener('click', () => {
     const btn = document.getElementById('archive-btn');
     if (btn) btn.classList.add('active');
-    
-    if (archiveContent) {
-      archiveContent.innerHTML = `
-        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 20px; color:var(--mist); font-family:var(--font-display); font-size:18px;">
-          <em>Preparing the archives for you, ${escapeHtml(state.honorific)}…</em>
-        </div>
-      `;
-    }
     if (archiveOverlay) archiveOverlay.classList.add('open');
 
-    try {
-      if (isAuthenticated && window.db && window.auth?.currentUser) {
-        await Promise.all([pullCloudArchives(), pullCloudStories()]);
-      }
+    const renderCurrent = () => {
       if (state.activeArchiveTab === 'library') {
         renderLibrary();
       } else if (state.activeArchiveTab === 'book') {
@@ -6116,7 +6174,22 @@ ${numbered}`;
       } else {
         renderArchives();
       }
-    } finally {
+    };
+
+    renderCurrent();
+
+    if (isAuthenticated && window.db && window.auth?.currentUser) {
+      Promise.all([pullCloudArchives(), pullCloudStories()])
+        .then(() => {
+          if (archiveOverlay?.classList.contains('open')) {
+            renderCurrent();
+          }
+        })
+        .catch(console.error)
+        .finally(() => {
+          if (btn) btn.classList.remove('active');
+        });
+    } else {
       if (btn) btn.classList.remove('active');
     }
   });
