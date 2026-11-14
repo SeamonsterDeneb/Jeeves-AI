@@ -1,5 +1,10 @@
-const CACHE_NAME = 'v3';
-const ASSETS = ['/', '/index.html', '/css/jeeves.css', '/js/jeeves.js'];
+const CACHE_NAME = 'jeeves-offline-v2';
+const ASSETS = [
+  '/',
+  '/index.html',
+  '/js/jeeves.js',
+  'https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js'
+];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -15,10 +20,20 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // Bypass cache for Firebase/Google APIs
   if (event.request.url.includes('firestore.googleapis.com') || event.request.url.includes('googleapis.com')) {
-    return; // Let browser handle network request natively
+    return;
   }
+
+  // Network-first strategy for app assets
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    fetch(event.request)
+      .then((response) => {
+        // Update cache with fresh version
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });

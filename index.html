@@ -43,20 +43,21 @@
     </button>
   </header>
 
-  <main id="chat"></main>
+  <main id="chat">
+    <div id="offline-reader-view" style="display:none; height:100%;">
+      <div id="book-container" class="flip-book"></div>
+      <div class="reader-controls">
+        <button id="toggle-tts-btn">Listen</button>
+        <button id="close-reader-btn">Close</button>
+      </div>
+    </div>
+  </main>
 
   <div id="archive-overlay" role="dialog" aria-label="Archives" aria-modal="true">
     <div class="archive-header">
       <h2>Archives</h2>
-      <!-- <input type="text" id="search-archives" placeholder="Search..." aria-label="Search archives" style="background:var(--ink-panel-2); border:1px solid var(--hairline); border-radius:6px; color:var(--parchment); padding:4px 8px; font-size:13px; width:120px;">
-      <button class="icon-btn" tabindex="0" id="refine-titles-btn" title="Tidy up archives" aria-label="Tidy up archives" style="font-size:12px;">
-        
-
-      </button> 
-      <button tabindex="0" id="archive-new-chat-btn" class="archive-btn" type="button" aria-label="Start new conversation">+</button>-->
       <button tabindex="0" class="icon-btn" id="close-archives" aria-label="Close archives">x</button>
     </div>
-
     <div id="archive-content" class="archive-list"></div>
   </div>
 
@@ -214,6 +215,12 @@
               <label><input type="radio" name="persona" value="regina"> Regina</label>
             </div>
             <p class="field-help">Select whether Jeeves attends you as Reginald or Regina.</p>
+          </div>
+
+          <div class="field">
+            <label for="voice-select">Preferred System Voice</label>
+            <select id="voice-select" style="width:100%;"></select>
+            <p class="field-help">Select the voice that sounds most natural on this device.</p>
           </div>
 
           <div class="field">

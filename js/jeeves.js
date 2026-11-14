@@ -166,6 +166,24 @@
     return 'h_' + Math.abs(hash).toString(36);
   }
 
+  function getPreferredVoice() {
+    const voices = speechSynthesis.getVoices();
+    // Allow the user to save a preferred voice name in localStorage
+    const savedVoice = localStorage.getItem('jeeves_preferred_voice');
+    return voices.find(v => v.name === savedVoice) || voices[0];
+  }
+
+  function populateVoiceList() {
+    const select = document.getElementById('voice-select');
+    if (!select) return;
+    const voices = speechSynthesis.getVoices();
+    select.innerHTML = voices.map(v => 
+      `<option value="${escapeHtml(v.name)}" ${v.name === localStorage.getItem('jeeves_preferred_voice') ? 'selected' : ''}>
+        ${escapeHtml(v.name)} (${v.lang})
+      </option>`
+    ).join('');
+  }
+
   function harvestNotesAndRecipes() {
     const bookMap = new Map();
     state.bookNotes.forEach(n => bookMap.set(n.id, n));
@@ -820,6 +838,10 @@
     }
   }
 
+  document.getElementById('toggle-tts-btn').addEventListener('click', () => {
+    const activePage = document.querySelector('.page-content')?.innerText || "";
+    toggleTTS(activePage);
+  });
 
   function toggleAutoSpeak(forcedState, shouldReadLatest = false) {
     isAutoSpeakEnabled = (typeof forcedState === 'boolean') ? forcedState : !isAutoSpeakEnabled;
@@ -1466,6 +1488,8 @@
   }
 
   function getJeevesVoice() {
+    return getPreferredVoice();
+    /* previous complex reasoning
     const voices = speechSynthesis.getVoices();
     const isRegina = state.persona === 'regina';
     if (isRegina) {
@@ -1478,7 +1502,19 @@
                       voices.find(v => v.name.includes('Google UK English Female')) ||
                       voices.find(v => v.lang.startsWith('en-GB') && v.name.includes('Google')) ||
                       voices.find(v => v.lang.startsWith('en-GB'));
-    return preferred || voices[0];
+    return preferred || voices[0]; */
+  }
+
+  let forceLocalTTS = false;
+
+  function toggleTestOfflineMode() {
+    forceLocalTTS = !forceLocalTTS;
+    const btn = document.getElementById('test-offline-btn');
+    if (btn) {
+      btn.textContent = forceLocalTTS ? "Offline Mode: ON (Forced)" : "Test Offline Fallback";
+      btn.style.background = forceLocalTTS ? "var(--claret)" : "";
+    }
+    console.log("Jeeves: Offline Fallback Test Mode is", forceLocalTTS ? "ENABLED" : "DISABLED");
   }
 
   
@@ -1832,6 +1868,8 @@
       const el = document.getElementById(id);
       if (el) el.value = fields[id] || '';
     });
+    populateVoiceList();
+
 
     // Handle theme radio buttons safely
     const currentThemeRadio = document.querySelector(`input[name="theme"][value="${state.theme}"]`);
@@ -2143,7 +2181,8 @@ function renderOverrides() {
     const selectedThemeRadio = document.querySelector('input[name="theme"]:checked');
     const newTheme = selectedThemeRadio ? selectedThemeRadio.value : 'light';
     const newModel = modelSelect.value || '';
-
+    const voiceSelect = document.getElementById('voice-select');
+    if (voiceSelect) localStorage.setItem('jeeves_preferred_voice', voiceSelect.value);
     if (!newKey) {
       setStatus('error', 'An API key is required before Jeeves may proceed.');
       return;
@@ -2310,14 +2349,17 @@ function renderOverrides() {
       const profile = this.getProfile(speaker);
       const clean = sanitizeForSpeech(text);
       if (!clean) return;
-      const cleanKey = `${clean}__p${profile.pitch}_r${profile.rate || 1}`;
+      
+      // Network-aware check
+      const isOnline = navigator.onLine;
+      // If forceLocalTTS is true, we act as if we are offline
+      const canUseCloud = !forceLocalTTS && isOnline && getTtsQuota() < 980000;
+
+      
       let playedCloud = false;
-      if (getTtsQuota() < 980000) {
+      if (canUseCloud) {
         try {
-          const audioUrl = audioPrefetchCache.has(cleanKey)
-            ? await audioPrefetchCache.get(cleanKey)
-            : await fetchTtsBlobUrl(clean, profile.pitch, profile.rate || 1);
-          audioPrefetchCache.delete(cleanKey);
+          const audioUrl = await fetchTtsBlobUrl(clean, profile.pitch, profile.rate || 1);
           if (audioUrl) {
             await new Promise(resolve => {
               this._resolveCurrent = resolve;
@@ -2334,7 +2376,8 @@ function renderOverrides() {
           console.warn('Reader cloud audio failed, falling back:', err);
         }
       }
-      if (!playedCloud && 'speechSynthesis' in window) {
+
+      if (!playedCloud) {
         await new Promise(resolve => {
           this._resolveCurrent = resolve;
           const u = new SpeechSynthesisUtterance(clean);
@@ -2342,6 +2385,13 @@ function renderOverrides() {
           if (voice) u.voice = voice;
           u.rate = (state.ttsRate || 1.0) * (profile.rate || 1.0);
           u.pitch = profile.browserPitch || 1.0;
+          // Neutralize for Safari or if requested
+          const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+          if (isSafari) {
+            u.rate = state.ttsRate || 1.0;
+            u.pitch = 1.0;
+          }
+
           u.onend = () => resolve();
           u.onerror = () => resolve();
           speechSynthesis.speak(u);
@@ -2955,6 +3005,22 @@ function flipToStoryPage(targetPage) {
       activeStoryBookFlip.flip(targetPage);
     }
   }
+}
+
+function importLocalFileAsStory(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const story = {
+      id: 'private_' + Date.now(),
+      title: file.name.replace(/\.[^/.]+$/, ''),
+      rawLit: e.target.result,
+      isPrivate: true
+    };
+    state.customStories.push(story);
+    localStorage.setItem(LS_KEY_CUSTOM_STORIES, JSON.stringify(state.customStories));
+    renderLibrary();
+  };
+  reader.readAsText(file);
 }
 
 function syncStoryBookHighlight(lineIdx) {
@@ -6206,6 +6272,33 @@ ${numbered}`;
       closeArchives();
     }
   });
+  // ------------ Offline Reader ----------
+  let currentBook = null;
+let ttsUtterance = null;
+
+async function loadLocalBook(file) {
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const text = e.target.result;
+    const pages = text.match(/.{1,1500}/g) || [text]; // Chunking for pages
+    const container = document.getElementById('book-container');
+    container.innerHTML = pages.map(p => `<div class="page"><div class="page-content">${p}</div></div>`).join('');
+    
+    currentBook = new St.PageFlip(container, { width: 400, height: 600, size: "fixed" });
+    currentBook.loadFromHTML(document.querySelectorAll('.page'));
+    document.getElementById('offline-reader-view').style.display = 'block';
+  };
+  reader.readAsText(file);
+}
+
+function toggleTTS(text) {
+  if (window.speechSynthesis.speaking) {
+    window.speechSynthesis.cancel();
+  } else {
+    ttsUtterance = new SpeechSynthesisUtterance(text);
+    window.speechSynthesis.speak(ttsUtterance);
+  }
+}
 
   document.getElementById('refine-titles-btn')?.addEventListener('click', refineAllTitles);
   document.getElementById('archive-new-chat-btn')?.addEventListener('click', startNewChat);
@@ -6223,6 +6316,7 @@ ${numbered}`;
   closeModalBtn?.addEventListener('click', closeModal);
   modalOverlay?.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
   saveSettingsBtn?.addEventListener('click', saveSettings);
+  document.getElementById('test-offline-btn').addEventListener('click', toggleTestOfflineMode);
   clearHistoryBtn?.addEventListener('click', clearConversation);
   refreshAppBtn?.addEventListener('click', refreshAppCache);
 
@@ -6233,13 +6327,28 @@ ${numbered}`;
   });
 
   const testVoiceBtn = document.getElementById('test-voice-btn');
-  testVoiceBtn?.addEventListener('click', () => {
+  testVoiceBtn?.addEventListener('click', async () => {
     unlockAudio();
     const currentRate = parseFloat(document.getElementById('tts-rate-input')?.value) || state.ttsRate || 1.0;
     state.ttsRate = currentRate;
     stopSpeech();
-    speak(`At your service, ${state.honorific}. The vocal faculties appear in pristine working order.`);
+    
+    // We temporarily bypass the cloud if forceLocalTTS is active
+    const originalQuota = getTtsQuota();
+    if (forceLocalTTS) {
+      // Temporarily set quota to max to force local fallback in speak()
+      localStorage.setItem(LS_KEY_TTS_QUOTA, JSON.stringify({ count: 999999, month: 'test' }));
+    }
+    
+    // speak(`At your service, ${state.honorific}. The vocal faculties appear in ${forceLocalTTS ? 'local' : 'streaming'} working order.`);
+    speak(`How do you do, ${state.honorific}? I shall endeavor to give satisfaction.`);
+    
+    // Restore quota
+    if (forceLocalTTS) {
+      localStorage.setItem(LS_KEY_TTS_QUOTA, JSON.stringify({ count: originalQuota, month: 'test' }));
+    }
   });
+
 
   const rateSlider = document.getElementById('tts-rate-slider');
   const rateInput = document.getElementById('tts-rate-input');
