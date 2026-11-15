@@ -98,6 +98,7 @@
     convoType: 'general',
     voiceProfiles: JSON.parse(localStorage.getItem(LS_KEY_VOICE_PROFILES) || '{"Jeeves":{"pitch":0,"rate":1.0,"browserPitch":1.0},"Bertie":{"pitch":2.0,"rate":1.0,"browserPitch":1.1},"Aunt Agatha":{"pitch":5.0,"rate":0.95,"browserPitch":1.35},"Bingo":{"pitch":1.5,"rate":1.05,"browserPitch":1.15},"Aline":{"pitch":4.0,"rate":1.0,"browserPitch":1.25},"Sidney":{"pitch":-2.0,"rate":0.95,"browserPitch":0.85}}'),
     readerProgress: JSON.parse(localStorage.getItem(LS_KEY_READER_PROGRESS) || '{}'),
+    readerChapters: JSON.parse(localStorage.getItem('jeeves_reader_chapters') || '{}'),
     history: [],
     conversations: [],
     activeId: localStorage.getItem(LS_KEY_ACTIVE) || 'default',
@@ -492,10 +493,18 @@
   async function pullCloudStories() {
     if (!window.db || !window.auth?.currentUser) return;
     try {
+      await pullPrivateStories();
       const snapshot = await window.db.collection('stories').get();
       snapshot.forEach(doc => {
         const data = doc.data();
         const id = doc.id;
+        if (data.chapters) {
+          if (data.characters) state.storyCharacters[id] = data.characters;
+          const entry = { id, title: data.title, author: data.author || '', chapters: data.chapters, addedByName: data.addedByName, createdAt: data.createdAt || 0 };
+          const at = state.customStories.findIndex(s => s.id === id);
+          if (at >= 0) state.customStories[at] = entry; else state.customStories.push(entry);
+          return;
+        }
         state.storyTextCache.set(id, data.lit);
         if (data.characters) state.storyCharacters[id] = data.characters;
         if ((state.storyCatalogue || []).some(s => s.id === id)) {
@@ -520,6 +529,61 @@
       }
     } catch (err) {
       console.warn(`Story library sync difficulty, ${state.honorific}:`, err);
+    }
+  }
+
+  async function pushPrivateStoryToCloud(story, rawLit) {
+    if (!isAuthenticated || !window.db || !window.auth?.currentUser) return;
+    if (story.chapters) return pushChapteredStoryToCloud(story, []);
+    try {
+      await window.db.collection('users').doc(window.auth.currentUser.uid).collection('stories').doc(story.id).set({
+        title: story.title,
+        author: story.author || '',
+        lit: rawLit || story.rawLit || '',
+        characters: state.storyCharacters[story.id] || [],
+        createdAt: story.createdAt || Date.now(),
+        updatedAt: Date.now()
+      }, { merge: true });
+      const entry = state.customStories.find(s => s.id === story.id);
+      if (entry) entry.synced = true;
+      try { localStorage.setItem(LS_KEY_CUSTOM_STORIES, JSON.stringify(state.customStories)); } catch(e){}
+    } catch (err) {
+      console.warn(`Private story sync difficulty, ${state.honorific}:`, err);
+    }
+  }
+
+  async function deletePrivateStoryFromCloud(id) {
+    if (!isAuthenticated || !window.db || !window.auth?.currentUser) return;
+    try {
+      await window.db.collection('users').doc(window.auth.currentUser.uid).collection('stories').doc(id).delete();
+    } catch (err) {
+      console.warn(`Private story delete difficulty, ${state.honorific}:`, err);
+    }
+  }
+
+  async function pullPrivateStories() {
+    if (!window.db || !window.auth?.currentUser) return;
+    try {
+      const snapshot = await window.db.collection('users').doc(window.auth.currentUser.uid).collection('stories').get();
+      const inCloud = new Set();
+      snapshot.forEach(doc => {
+        const d = doc.data();
+        inCloud.add(doc.id);
+        if (!d.chapters) state.storyTextCache.set(doc.id, d.lit);
+        if (d.characters) state.storyCharacters[doc.id] = d.characters;
+        const entry = { id: doc.id, title: d.title, author: d.author || '', createdAt: d.createdAt || 0, isPrivate: true, synced: true };
+        if (d.chapters) { entry.chapters = d.chapters; entry.cast = d.cast || {}; } else { entry.rawLit = d.lit; }
+        const idx = state.customStories.findIndex(s => s.id === doc.id);
+        if (idx >= 0) state.customStories[idx] = entry; else state.customStories.push(entry);
+      });
+      state.customStories = state.customStories.filter(s => !s.isPrivate || inCloud.has(s.id) || !s.synced);
+      state.customStories.filter(s => s.isPrivate && !inCloud.has(s.id)).forEach(s => s.chapters ? pushChapteredStoryToCloud(s) : pushPrivateStoryToCloud(s));
+      try {
+        localStorage.setItem(LS_KEY_CUSTOM_STORIES, JSON.stringify(state.customStories));
+        localStorage.setItem(LS_KEY_STORY_CHARACTERS, JSON.stringify(state.storyCharacters));
+      } catch(e){}
+    } catch (err) {
+      console.warn(`Private story fetch difficulty, ${state.honorific}:`, err);
     }
   }
 
@@ -1698,13 +1762,14 @@
     const storyId = spec.replace(/:(START|RESUME)$/i, '');
     const story = (state.customStories || []).find(s => s.id === storyId);
     if (!story) return;
-    const text = await preloadStoryText(story);
-    if (!text) return;
     while (isSpeaking || speechQueue.length > 0) await new Promise(r => setTimeout(r, 250));
     stopListening();
-    if (restart) state.readerProgress[story.id] = 0;
-    JeevesReader.load(text, story.id);
-    openStoryBookModal(story);
+    if (restart) {
+      state.readerProgress[story.id] = 0;
+      state.readerChapters[story.id] = 0;
+    }
+    if (!(await JeevesReader.loadStory(story, true))) return;
+    showReaderBar(story.title);
     JeevesReader.play().then(updateReaderBar);
   }
 
@@ -1839,9 +1904,8 @@
     const readable = (state.customStories || []).filter(st => st.id && st.title);
     if (readable.length) {
       const list = readable.map(st => {
-        const n = (state.storyTextCache.get(st.id) || st.rawLit || '').split(/\r?\n/).filter(l => l.trim()).length;
-        const at = state.readerProgress[st.id] || 0;
-        const mark = (at > 0 && at < n) ? `, bookmarked at ${Math.round(at / n * 100)}%` : '';
+        const pct = storyProgressPct(st);
+        const mark = (pct > 0 && pct < 100) ? `, bookmarked at ${pct}%` : '';
         return `"${st.title}" (ID: ${st.id}${mark})`;
       }).join(', ');
       instructions += `\n- Story Library: you can read these stories aloud: ${list}.\n  STORY PROTOCOL: (1) If the person asks for a story without naming one, or the moment suits it (but no more often than every ten back and forths with your master), offer exactly ONE title by name, phrased as a question, and do not list the others. Do not include the marker in an offer. (2) If they decline, acknowledge it in a few gracious words and offer a different title they have not yet declined; if none remain, say so and ask what else you might do. (3) If they accept, or name a story themselves, and that story has NO bookmark, reply with exactly one short sentence in the form "Here is <Title>, ${h}:" followed by the marker [[READ_STORY:ID]]. (4) If the story they chose IS marked as bookmarked, do not start yet: ask in one brief question whether they would like it from the beginning or resumed where you last left off, and include no marker. If they already said which in their request, skip the question. (5) Once they answer, reply with one short sentence, either "Here is <Title>, ${h}:" for the beginning or "Resuming <Title> where we left off, ${h}:" for resuming, followed by the marker [[READ_STORY:ID:START]] or [[READ_STORY:ID:RESUME]] accordingly. Replies that carry a marker must not end with a question, and this overrides any other instruction to end with a follow-up question. (6) Never include a marker unless the person has just accepted or named a story and, where required, chosen beginning or resume. Do not use Google Search or add references for story requests.`;
@@ -2311,6 +2375,8 @@ function renderOverrides() {
     storyId: '',
     lines: [],
     currentIndex: 0,
+    chapterIndex: 0,
+    story: null,
     isPlaying: false,
     _playToken: 0,
 
@@ -2323,6 +2389,10 @@ function renderOverrides() {
     },
 
     getProfile(speaker) {
+      const story = this.story;
+      if (story && story.isPrivate) {
+        return (story.cast && story.cast[speaker]) || { pitch: 0, rate: 1.0, browserPitch: 1.0 };
+      }
       if (!state.voiceProfiles[speaker]) {
         state.voiceProfiles[speaker] = { pitch: 0, rate: 1.0, browserPitch: 1.0 };
         try { localStorage.setItem(LS_KEY_VOICE_PROFILES, JSON.stringify(state.voiceProfiles)); } catch(e){}
@@ -2342,7 +2412,51 @@ function renderOverrides() {
 
     saveProgress() {
       state.readerProgress[this.storyId] = this.currentIndex;
-      try { localStorage.setItem(LS_KEY_READER_PROGRESS, JSON.stringify(state.readerProgress)); } catch(e){}
+      state.readerChapters[this.storyId] = this.chapterIndex || 0;
+      try {
+        localStorage.setItem(LS_KEY_READER_PROGRESS, JSON.stringify(state.readerProgress));
+        localStorage.setItem('jeeves_reader_chapters', JSON.stringify(state.readerChapters));
+      } catch(e){}
+    },
+
+    async loadStory(story, force) {
+      const last = story.chapters ? story.chapters.length - 1 : 0;
+      let n = Math.min(state.readerChapters[story.id] || 0, last);
+      if (story.chapters && n === last && (state.readerProgress[story.id] || 0) >= story.chapters[last].lines) {
+        n = 0;
+        state.readerChapters[story.id] = 0;
+        state.readerProgress[story.id] = 0;
+      }
+      if (!force && this.storyId === story.id && this.chapterIndex === n && this.lines.length) return true;
+      const text = await getChapterText(story, n);
+      if (!text) return false;
+      this.story = story;
+      this.chapterIndex = n;
+      const heading = story.chapters && n > 0 ? (story.chapters[n].title || `Chapter ${n + 1}`) : story.title;
+      this.load(text, story.id, heading);
+      this.prefetchNext();
+      return true;
+    },
+
+    prefetchNext() {
+      const story = this.story;
+      if (story && story.chapters && this.chapterIndex + 1 < story.chapters.length) getChapterText(story, this.chapterIndex + 1);
+    },
+
+    async advanceChapter() {
+      const story = this.story;
+      if (!story || !story.chapters) return false;
+      const next = this.chapterIndex + 1;
+      if (next >= story.chapters.length) return false;
+      state.readerChapters[story.id] = next;
+      state.readerProgress[story.id] = 0;
+      if (!(await this.loadStory(story, true))) return false;
+      this.saveProgress();
+      if (document.getElementById('story-book-reader-overlay')?.classList.contains('open')) {
+        openStoryBookModal({ ...story, title: chapterHeading(story) });
+      }
+      updateReaderBar();
+      return true;
     },
 
     async speakLine(text, speaker = 'Jeeves') {
@@ -2359,7 +2473,11 @@ function renderOverrides() {
       let playedCloud = false;
       if (canUseCloud) {
         try {
-          const audioUrl = await fetchTtsBlobUrl(clean, profile.pitch, profile.rate || 1);
+          const cleanKey = `${clean}__p${profile.pitch}_r${profile.rate || 1}`;
+          const audioUrl = audioPrefetchCache.has(cleanKey)
+            ? await audioPrefetchCache.get(cleanKey)
+            : await fetchTtsBlobUrl(clean, profile.pitch, profile.rate || 1);
+          audioPrefetchCache.delete(cleanKey);
           if (audioUrl) {
             await new Promise(resolve => {
               this._resolveCurrent = resolve;
@@ -2369,6 +2487,7 @@ function renderOverrides() {
               ttsAudio.onerror = resolve;
               ttsAudio.play().catch(resolve);
             });
+            URL.revokeObjectURL(audioUrl);
             this._resolveCurrent = null;
             playedCloud = true;
           }
@@ -2460,6 +2579,10 @@ function renderOverrides() {
         this.currentIndex++;
         this.saveProgress();
         updateReaderBar();
+      }
+      if (myToken === this._playToken && this.isPlaying && await this.advanceChapter()) {
+        if (myToken === this._playToken) return this.play();
+        return;
       }
       if (myToken === this._playToken) this.isPlaying = false;
     },
@@ -2787,6 +2910,13 @@ function updateReaderBar() {
         titleEl.className = 'story-first-page-title';
         titleEl.textContent = story.title;
         measureBody.appendChild(titleEl);
+        const by = storyAuthor(story);
+        if (by) {
+          const byEl = document.createElement('div');
+          byEl.className = 'story-first-page-author';
+          byEl.textContent = 'by ' + by;
+          measureBody.appendChild(byEl);
+        }
       }
     }
 
@@ -2897,6 +3027,13 @@ function updateReaderBar() {
         titleEl.className = 'story-first-page-title';
         titleEl.textContent = story.title;
         bodyEl.appendChild(titleEl);
+        const by = storyAuthor(story);
+        if (by) {
+          const byEl = document.createElement('div');
+          byEl.className = 'story-first-page-author';
+          byEl.textContent = 'by ' + by;
+          bodyEl.appendChild(byEl);
+        }
       }
 
       let currentPara = null;
@@ -5183,38 +5320,63 @@ async function submitUserSuggestion() {
     return '';
   }
 
-  async function parseStoryToLit(rawText, title) {
-    const model = getModelForConvoType('general');
-    const url = `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${encodeURIComponent(state.apiKey)}`;
-    const prompt = `Convert the following public domain P.G. Wodehouse story excerpt into proprietary line-by-line format where every single sentence or sentence clause is prefixed with [Speaker Name].
+  async function parseStoryToLit(rawText, title, personal) {
+    const paragraphs = rawText.split(/\n+/).filter(p => p.trim());
+    const chunks = [];
+    let current = '';
+    let words = 0;
+    for (const p of paragraphs) {
+      const w = p.split(/\s+/).length;
+      if (current && words + w > 1500) {
+        chunks.push(current);
+        current = p;
+        words = w;
+      } else {
+        current = current ? current + '\n' + p : p;
+        words += w;
+      }
+    }
+    if (current) chunks.push(current);
+
+    const narr = personal ? '[Narrator]' : '[Bertie]';
+    const url = `https://generativelanguage.googleapis.com/v1beta/${getModelForConvoType('general')}:generateContent?key=${encodeURIComponent(getKeyForConvoType('general'))}`;
+    const out = [];
+    for (const chunk of chunks) {
+      const prompt = `Convert the following ${personal ? 'story excerpt' : 'public domain P.G. Wodehouse story excerpt'} into proprietary line-by-line format where every single sentence or sentence clause is prefixed with [Speaker Name].
 Rules:
 1. Retain ALL original prose without omitting or summarizing any text.
-2. Tag narrator prose as [Bertie] (or the appropriate narrator).
-3. Tag spoken dialogue with the character speaking (e.g. [Jeeves], [Aunt Agatha], [Bingo]).
+2. Tag narrator prose as ${narr}${personal ? '' : ' (or the appropriate narrator)'}.
+3. Tag spoken dialogue with the character speaking (e.g. ${personal ? '[Henry Maxwell], [Rachel Winslow]' : '[Jeeves], [Aunt Agatha], [Bingo]'}), using each character's full name consistently every time, never a title or pronoun.
 4. Each entry must be on a new line: [Speaker] Text.
 5. Never let one line mix quoted dialogue with its narrative attribution tag (e.g. "said Jeeves with a sniff"). Split such sentences into two consecutive lines: the quoted words tagged to the speaking character, and the "said/replied/muttered ..." attribution tagged to the narrator.
    Example — wrong: [Jeeves] "Very good, sir," said Jeeves with a sniff.
    Example — right:
    [Jeeves] "Very good, sir,"
-   [Bertie] said Jeeves with a sniff.
+   ${narr} said Jeeves with a sniff.
 
 Story Excerpt:
-${rawText}`;
-
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2 }
-      })
-    });
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err?.error?.message || `Parsing error ${resp.status}`);
+${chunk}`;
+      let resp;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.2 }
+          })
+        });
+        if (resp.status !== 429 && resp.status !== 503) break;
+        await new Promise(r => setTimeout(r, 4000 * (attempt + 1)));
+      }
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err?.error?.message || `Parsing error ${resp.status}`);
+      }
+      const data = await resp.json();
+      out.push((data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim());
     }
-    const data = await resp.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+    return out.join('\n');
   }
 
   async function reviewLitLines(lines) {
@@ -5394,7 +5556,7 @@ ${numbered}`;
       name = (name || '').trim();
       if (!name || speakers.some(s => s.toLowerCase() === name.toLowerCase())) return null;
       speakers.push(name);
-      if (!state.voiceProfiles[name]) {
+      if (!personal && !state.voiceProfiles[name]) {
         state.voiceProfiles[name] = { pitch: 0, rate: 1.0, browserPitch: 1.0 };
         localStorage.setItem(LS_KEY_VOICE_PROFILES, JSON.stringify(state.voiceProfiles));
         pushVoiceProfilesToCloud();
@@ -5754,6 +5916,17 @@ ${numbered}`;
               <label for="story-file-upload">Upload Text File (.txt / .lit)</label>
               <input type="file" id="story-file-upload" accept=".txt,.lit" style="margin-bottom:8px;">
             </div>
+            <div class="field">
+              <label style="display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="story-private-toggle"> 
+                Personal Story (Private to my account)
+              </label>
+              <p class="field-help">If unchecked, the story is considered a "Jeeves Story" and will be available to all.</p>
+            </div>
+            <div class="field" id="story-author-field" style="display:none;">
+              <label for="story-author-input">Author</label>
+              <input type="text" id="story-author-input" placeholder="e.g. Your name, or whoever wrote it">
+            </div>
             <div class="field" style="margin-bottom:0;">
               <label for="story-text-input">Or Paste Story Prose</label>
               <textarea id="story-text-input" rows="8" style="width:100%; background:var(--ink-deep); border:1px solid var(--hairline); color:var(--parchment); border-radius:8px; padding:10px; font-family:var(--font-ui); font-size:13px; resize:vertical;" placeholder="Paste original story text here..."></textarea>
@@ -5768,6 +5941,9 @@ ${numbered}`;
       document.body.appendChild(modal);
 
       modal.querySelector('#close-story-modal').onclick = () => modal.classList.remove('open');
+      modal.querySelector('#story-private-toggle').onchange = (e) => {
+        modal.querySelector('#story-author-field').style.display = e.target.checked ? 'block' : 'none';
+      };
       modal.onclick = (e) => { if (e.target === modal) modal.classList.remove('open'); };
 
       modal.querySelector('#story-file-upload').onchange = (e) => {
@@ -5799,24 +5975,34 @@ ${numbered}`;
         statusEl.textContent = 'Jeeves is organizing the dialogue and narrative prose…';
 
         try {
-          let litContent = raw;
-          // If not already in .lit format, parse via Gemini
-          if (!/^\s*\[[^\]]+\]/m.test(raw)) {
-            litContent = await parseStoryToLit(raw, title);
-          }
-
+          const isPrivate = modal.querySelector('#story-private-toggle').checked;
           const storyObj = {
             id: 'custom-' + Date.now(),
             title: title,
-            rawLit: litContent
+            author: isPrivate ? modal.querySelector('#story-author-input').value.trim() : '',
+            createdAt: Date.now(),
+            isPrivate: isPrivate,
+            chapters: []
           };
-
+          const tagged = /^\s*\[[^\]]+\]/m.test(raw);
+          const parts = splitIntoChapters(raw);
+          for (let i = 0; i < parts.length; i++) {
+            statusEl.textContent = `Jeeves is organizing the prose… chapter ${i + 1} of ${parts.length}`;
+            const lit = tagged ? parts[i].text : await parseStoryToLit(parts[i].text, title, isPrivate);
+            await chapterStore.set(`${storyObj.id}:${i}`, lit);
+            storyObj.chapters.push({ title: parts[i].title, lines: lit.split(/\r?\n/).filter(l => l.trim()).length });
+          }
+          if (isPrivate) {
+            statusEl.textContent = 'Casting voices…';
+            await ensureStoryCast(storyObj).catch(err => console.warn('Voice casting skipped:', err));
+          }
           state.customStories.push(storyObj);
-          localStorage.setItem(LS_KEY_CUSTOM_STORIES, JSON.stringify(state.customStories));
-          pushStoryToCloud(storyObj.id, storyObj.title, storyObj.rawLit, true);
+          saveCustomStories();
+          pushChapteredStoryToCloud(storyObj);
           modal.classList.remove('open');
           modal.querySelector('#story-title-input').value = '';
           modal.querySelector('#story-text-input').value = '';
+          modal.querySelector('#story-author-input').value = '';
           statusEl.textContent = '';
           renderLibrary();
         } catch (err) {
@@ -5829,6 +6015,267 @@ ${numbered}`;
       };
     }
     modal.classList.add('open');
+  }
+
+  const chapterStore = {
+    db: null,
+    async open() {
+      if (this.db) return this.db;
+      this.db = await new Promise((resolve, reject) => {
+        const req = indexedDB.open('jeeves_chapters', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('chapters');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      return this.db;
+    },
+    async run(mode, action) {
+      try {
+        const db = await this.open();
+        return await new Promise((resolve, reject) => {
+          const tx = db.transaction('chapters', mode);
+          const req = action(tx.objectStore('chapters'));
+          tx.oncomplete = () => resolve(req ? req.result : undefined);
+          tx.onerror = () => reject(tx.error);
+          tx.onabort = () => reject(tx.error);
+        });
+      } catch (err) {
+        console.warn('Chapter store difficulty:', err);
+        return undefined;
+      }
+    },
+    get(key) { return this.run('readonly', s => s.get(key)).then(v => v || ''); },
+    set(key, text) { return this.run('readwrite', s => s.put(text, key)); },
+    remove(key) { return this.run('readwrite', s => s.delete(key)); }
+  };
+
+  function saveCustomStories() {
+    try { localStorage.setItem(LS_KEY_CUSTOM_STORIES, JSON.stringify(state.customStories)); } catch(e){}
+  }
+
+  function storyCloudRef(story) {
+    return story.isPrivate
+      ? window.db.collection('users').doc(window.auth.currentUser.uid).collection('stories').doc(story.id)
+      : window.db.collection('stories').doc(story.id);
+  }
+
+  async function getChapterText(story, n) {
+    if (!story.chapters) return preloadStoryText(story);
+    const key = `${story.id}:${n}`;
+    let text = await chapterStore.get(key);
+    if (text) return text;
+    if (!window.db || !window.auth?.currentUser) return '';
+    try {
+      const doc = await storyCloudRef(story).collection('chapters').doc(String(n)).get();
+      text = doc.exists ? (doc.data().lit || '') : '';
+      if (text) await chapterStore.set(key, text);
+    } catch (err) {
+      console.warn(`Chapter fetch difficulty, ${state.honorific}:`, err);
+    }
+    return text || '';
+  }
+
+  async function getFullStoryText(story) {
+    if (!story.chapters) return preloadStoryText(story);
+    const parts = [];
+    for (let i = 0; i < story.chapters.length; i++) parts.push(await getChapterText(story, i));
+    return parts.join('\n');
+  }
+
+  function chapterHeading(story) {
+    const n = state.readerChapters[story.id] || 0;
+    if (!story.chapters || n === 0) return story.title;
+    return story.chapters[n].title || `Chapter ${n + 1}`;
+  }
+
+  function storyProgressPct(story) {
+    const at = state.readerProgress[story.id] || 0;
+    if (!story.chapters) {
+      const text = state.storyTextCache.get(story.id) || story.rawLit || '';
+      const total = text.split(/\r?\n/).filter(l => l.trim()).length;
+      return total ? Math.min(100, Math.round(at / total * 100)) : 0;
+    }
+    const total = story.chapters.reduce((sum, c) => sum + c.lines, 0);
+    const done = story.chapters.slice(0, state.readerChapters[story.id] || 0).reduce((sum, c) => sum + c.lines, 0);
+    return total ? Math.min(100, Math.round((done + at) / total * 100)) : 0;
+  }
+
+  function splitIntoChapters(raw) {
+    const lines = raw.replace(/\r/g, '').split('\n');
+    const isHeading = l => {
+      const t = l.trim();
+      return t.length > 0 && t.length <= 60 && (
+        /^chapter\s+([IVXLCDM]+|\d+|[A-Za-z-]+)\b/i.test(t) ||
+        /^(?:BOOK|Book|PART|Part|SECTION|Section)\s+(?:[IVXLCDM]+|\d+)\b/.test(t) ||
+        /^[IVXLC]+\.?$/.test(t)
+      );
+    };
+    const heads = [];
+    lines.forEach((l, i) => { if (isHeading(l)) heads.push(i); });
+    let parts = [];
+    if (heads.length >= 3) {
+      const front = lines.slice(0, heads[0]).join('\n').trim();
+      if (front.split(/\s+/).length > 200) parts.push({ title: 'Opening', text: front });
+      heads.forEach((start, k) => {
+        const end = k + 1 < heads.length ? heads[k + 1] : lines.length;
+        parts.push({ title: lines[start].trim(), text: lines.slice(start + 1, end).join('\n').trim() });
+      });
+    } else {
+      parts = [{ title: '', text: raw.trim() }];
+    }
+    const out = [];
+    parts.filter(p => p.text).forEach(p => {
+      const blankSeparated = /\n\s*\n/.test(p.text);
+      const paras = (blankSeparated ? p.text.split(/\n\s*\n/).map(s => s.replace(/\s*\n\s*/g, ' ')) : p.text.split('\n'))
+        .map(s => s.trim()).filter(Boolean);
+      let buf = [];
+      let count = 0;
+      let piece = 0;
+      const flush = () => {
+        if (!buf.length) return;
+        piece++;
+        out.push({ title: piece === 1 ? p.title : `${p.title} (cont.)`, text: buf.join('\n') });
+        buf = [];
+        count = 0;
+      };
+      paras.forEach(s => {
+        const w = s.split(/\s+/).length;
+        if (count + w > 4000 && buf.length) flush();
+        buf.push(s);
+        count += w;
+      });
+      flush();
+    });
+    return out.length ? out : [{ title: '', text: raw.trim() }];
+  }
+
+  async function pushChapteredStoryToCloud(story, which) {
+    if (!isAuthenticated || !window.db || !window.auth?.currentUser || !story.chapters) return;
+    try {
+      const user = window.auth.currentUser;
+      const ref = storyCloudRef(story);
+      const meta = {
+        title: story.title,
+        author: story.author || '',
+        chapters: story.chapters,
+        cast: story.cast || {},
+        characters: state.storyCharacters[story.id] || [],
+        createdAt: story.createdAt || Date.now(),
+        updatedAt: Date.now()
+      };
+      if (!story.isPrivate) {
+        meta.addedBy = user.uid;
+        meta.addedByName = user.displayName || user.email || 'A family member';
+      }
+      await ref.set(meta, { merge: true });
+      const indexes = which || story.chapters.map((c, i) => i);
+      for (const i of indexes) {
+        const lit = await chapterStore.get(`${story.id}:${i}`);
+        if (lit) await ref.collection('chapters').doc(String(i)).set({ lit });
+      }
+      const entry = state.customStories.find(s => s.id === story.id);
+      if (entry) { entry.synced = true; saveCustomStories(); }
+    } catch (err) {
+      console.warn(`Story sync difficulty, ${state.honorific}:`, err);
+    }
+  }
+
+  async function removeStoryChapters(story) {
+    if (!story.chapters) return;
+    for (let i = 0; i < story.chapters.length; i++) {
+      await chapterStore.remove(`${story.id}:${i}`);
+      if (story.isPrivate && isAuthenticated && window.auth?.currentUser) {
+        try { await storyCloudRef(story).collection('chapters').doc(String(i)).delete(); } catch (err) {}
+      }
+    }
+  }
+
+  async function ensureStoryCast(story) {
+    if (!story.isPrivate) return;
+    const counts = new Map();
+    const samples = {};
+    const total = story.chapters ? story.chapters.length : 1;
+    for (let n = 0; n < total; n++) {
+      const text = await getChapterText(story, n);
+      text.split(/\r?\n/).forEach(line => {
+        const m = line.match(/^\s*\[([^\]]+)\]\s*(.*)$/);
+        if (!m) return;
+        const who = m[1].trim();
+        counts.set(who, (counts.get(who) || 0) + 1);
+        samples[who] = samples[who] || [];
+        if (samples[who].length < 3 && m[2].trim().length > 25) samples[who].push(m[2].trim().slice(0, 160));
+      });
+    }
+    story.cast = story.cast || {};
+    story.cast.Narrator = story.cast.Narrator || { pitch: 0, rate: 1.0, browserPitch: 1.0 };
+    const missing = [...counts.keys()]
+      .filter(who => who !== 'Narrator' && !story.cast[who])
+      .sort((a, b) => counts.get(b) - counts.get(a))
+      .slice(0, 14);
+    if (!missing.length) return;
+    const taken = Object.entries(story.cast).map(([name, p]) => `${name} (pitch ${p.pitch})`).join(', ');
+    const list = missing.map(name => `- ${name} (${counts.get(name)} lines)` + (samples[name].length ? `: "${samples[name].join('" / "')}"` : '')).join('\n');
+    const prompt = `You are casting voices for an audio reading of "${story.title}"${story.author ? ' by ' + story.author : ''}. One narrator voice reads every part, shifted up or down in pitch to suggest each character. Judge each character's gender, age and temperament from the sample lines and the story itself.
+Rules:
+- Female characters: pitch +10 to +20 semitones (older or authoritative women +10 to +14, young women +15 to +20), browserPitch 1.35 to 1.85.
+- Male characters: pitch -10 to +10 semitones (older, grave or gruff men -10 to -2, young or excitable men +1 to +8), browserPitch 0.70 to 1.20.
+- rate: 0.88 for slow, pompous or elderly characters up to 1.15 for quick, young or excitable ones.
+- Give principal characters clearly different pitches, at least 1.5 semitones apart.
+${taken ? `Already cast, so avoid these pitches: ${taken}.\n` : ''}
+Characters:
+${list}
+
+Return ONLY a JSON object mapping each character name to { "pitch": number, "rate": number, "browserPitch": number }.`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/${getModelForConvoType('general')}:generateContent?key=${encodeURIComponent(getKeyForConvoType('general'))}`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.3, responseMimeType: 'application/json' }
+      })
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `Casting error ${resp.status}`);
+    }
+    const data = await resp.json();
+    const cast = JSON.parse((data.candidates?.[0]?.content?.parts?.[0]?.text || '{}').replace(/```json|```/g, '').trim());
+    const num = (v, lo, hi, fallback) => (typeof v === 'number' && isFinite(v)) ? Math.max(lo, Math.min(hi, v)) : fallback;
+    missing.forEach(name => {
+      const p = cast[name];
+      if (!p) return;
+      story.cast[name] = { pitch: num(p.pitch, -20, 20, 0), rate: num(p.rate, 0.8, 1.2, 1.0), browserPitch: num(p.browserPitch, 0.6, 1.9, 1.0) };
+    });
+  }
+
+  async function editChapteredStory(story) {
+    const total = story.chapters.length;
+    let n = Math.min(state.readerChapters[story.id] || 0, total - 1);
+    if (total > 1) {
+      const pick = parseInt(prompt(`Edit which chapter? (1 to ${total})`, n + 1), 10);
+      if (!pick || pick < 1 || pick > total) return;
+      n = pick - 1;
+    }
+    const text = await getChapterText(story, n);
+    const label = total > 1 ? `${story.title}, ${story.chapters[n].title || 'Chapter ' + (n + 1)}` : story.title;
+    openStoryReviewModal(label, text || '', async (finalLit, speakers) => {
+      const entry = state.customStories.find(s => s.id === story.id);
+      if (!entry) return;
+      await chapterStore.set(`${entry.id}:${n}`, finalLit);
+      entry.chapters[n].lines = finalLit.split(/\r?\n/).filter(l => l.trim()).length;
+      state.storyCharacters[entry.id] = speakers;
+      try { localStorage.setItem(LS_KEY_STORY_CHARACTERS, JSON.stringify(state.storyCharacters)); } catch(err){}
+      if (JeevesReader.storyId === entry.id) JeevesReader.chapterIndex = -1;
+      if (entry.isPrivate) await ensureStoryCast(entry).catch(err => console.warn('Voice casting skipped:', err));
+      saveCustomStories();
+      pushChapteredStoryToCloud(entry, [n]);
+      renderLibrary();
+    }, state.storyCharacters[story.id], story.isPrivate);
+  }
+
+  function storyAuthor(story) {
+    return story.isPrivate ? (story.author || '') : 'P.G. Wodehouse';
   }
 
   function orderedCatalogue() {
@@ -5907,7 +6354,8 @@ ${numbered}`;
     });
     grid.addEventListener('drop', (e) => {
       e.preventDefault();
-      state.libraryOrder = [...grid.children].map(c => c.dataset.id);
+      const ids = [...grid.children].map(c => c.dataset.id);
+      state.libraryOrder = [...ids, ...state.libraryOrder.filter(id => !ids.includes(id))];
       try { localStorage.setItem(LS_KEY_LIBRARY_ORDER, JSON.stringify(state.libraryOrder)); } catch(err) {}
     });
   }
@@ -5929,142 +6377,151 @@ ${numbered}`;
     toolbar.querySelector('#voice-settings-btn')?.addEventListener('click', openVoiceSettingsModal);
     toolbar.querySelector('#add-story-btn')?.addEventListener('click', openAddStoryModal);
 
+    const allStories = orderedCatalogue().map(s => ({
+      ...s,
+      isPrivate: !!s.isPrivate
+    }));
+    const jeevesStories = allStories.filter(s => !s.isPrivate);
+    const personalStories = allStories.filter(s => s.isPrivate);
+
     const grid = document.createElement('div');
+    const renderSection = (title, stories) => {
+      if (stories.length === 0) return;
+      const header = document.createElement('h3');
+      header.textContent = title;
+      archiveContent.appendChild(header);
+      const sectionGrid = document.createElement('div');
+      sectionGrid.className = 'story-book-grid';
+      wireGridDropZone(sectionGrid);
+      
+      stories.forEach(story => {
+        const card = document.createElement('div');
+        card.className = `story-book-card ${story.isPrivate ? 'personal-card' : 'jeeves-card'}`;
+        card.dataset.id = story.id;
+        
+        const progressIdx = (state.readerProgress[story.id] || 0) + (state.readerChapters[story.id] || 0);
+        const pct = storyProgressPct(story);
+
+        const bookmarkText = progressIdx > 0 ? `Bookmark: ${pct}%` : 'Bookmark: 0%';
+        const isCurrent = JeevesReader.storyId === story.id && JeevesReader.isPlaying;
+        const btnLabel = isCurrent ? '⏸ Pause' : (progressIdx > 0 ? '▶ Resume' : '▶ Play');
+        const isCustom = state.customStories.some(s => s.id === story.id);
+        const iconBtnStyle = 'flex:1; background:transparent; border:1px solid rgba(212,175,55,0.45); color:inherit; border-radius:6px; padding:4px 2px; font-size:10.5px; cursor:pointer; line-height:1.3;';
+
+        card.innerHTML = `
+          <div class="story-drag-handle" title="Drag to reorder">⠿</div>
+          <div>
+            <div class="story-book-title">${escapeHtml(story.title)}</div>
+            <div class="story-book-author">${escapeHtml(storyAuthor(story) || 'Add author')}</div>
+          </div>
+          <div>
+            <div class="story-book-meta">${bookmarkText}</div>
+            <button class="archive-btn open-btn read-story-btn" type="button" style="width:100%; font-size:12px; padding:6px 6px;">
+              ${btnLabel}
+            </button>
+            <div style="display:flex; gap:4px; margin-top:6px;">
+              <button class="edit-story-btn" type="button" title="Edit Script" style="${iconBtnStyle}">✎ Edit</button>
+              ${isCustom ? `<button class="download-story-btn" type="button" title="Download .lit" style="${iconBtnStyle}">⬇</button>` : ''}
+              ${isCustom ? `<button class="delete-story-btn" type="button" title="Remove from Library" style="${iconBtnStyle}">🗑</button>` : ''}
+            </div>
+          </div>
+        `;
+        card.querySelector('.read-story-btn').onclick = async (e) => {
+          e.stopPropagation();
+          unlockAudio();
+          if (JeevesReader.storyId === story.id && JeevesReader.isPlaying) { JeevesReader.pause(); renderLibrary(); }
+          else { await startStoryFromChat(story.id); renderLibrary(); }
+        };
+        card.querySelector('.edit-story-btn').onclick = async (e) => {
+          e.stopPropagation();
+          if (story.chapters) { editChapteredStory(story); return; }
+          const currentText = await preloadStoryText(story);
+          openStoryReviewModal(story.title, currentText || '', (finalLit, speakers) => {
+            const entry = state.customStories.find(s => s.id === story.id);
+            if (entry) entry.rawLit = finalLit;
+            else state.storyOverrides[story.id] = finalLit;
+            state.storyCharacters[story.id] = speakers;
+            state.storyTextCache.set(story.id, finalLit);
+            try {
+              localStorage.setItem(LS_KEY_CUSTOM_STORIES, JSON.stringify(state.customStories));
+              localStorage.setItem(LS_KEY_STORY_OVERRIDES, JSON.stringify(state.storyOverrides));
+              localStorage.setItem(LS_KEY_STORY_CHARACTERS, JSON.stringify(state.storyCharacters));
+            } catch(err){}
+            if (story.isPrivate) pushPrivateStoryToCloud(story, finalLit);
+            else pushStoryToCloud(story.id, story.title, finalLit, false);
+            renderLibrary();
+          }, state.storyCharacters[story.id], story.isPrivate);
+        };
+
+        wireDragHandle(card.querySelector('.story-drag-handle'), card, sectionGrid);
+
+        if (story.isPrivate) {
+          const authorEl = card.querySelector('.story-book-author');
+          authorEl.style.cursor = 'pointer';
+          authorEl.title = 'Click to edit author';
+          authorEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const next = prompt('Author:', story.author || '');
+            if (next === null) return;
+            story.author = next.trim();
+            const entry = state.customStories.find(s => s.id === story.id);
+            if (entry) entry.author = story.author;
+            try { localStorage.setItem(LS_KEY_CUSTOM_STORIES, JSON.stringify(state.customStories)); } catch(err){}
+            pushPrivateStoryToCloud(entry || story);
+            renderLibrary();
+          });
+        }
+
+        card.tabIndex = 0;
+        card.setAttribute('role', 'button');
+        card.setAttribute('aria-label', `Open ${story.title}`);
+        card.addEventListener('keydown', (e) => {
+          if (e.target === card && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            card.click();
+          }
+        });
+        card.addEventListener('click', async (e) => {
+          if (e.target.closest('button') || e.target.closest('.story-drag-handle')) return;
+          if (!(await JeevesReader.loadStory(story))) { alert(`Unable to load "${story.title}"`); return; }
+          openStoryBookModal({ ...story, title: chapterHeading(story) });
+          updateReaderBar();
+        });
+
+        card.querySelector('.download-story-btn')?.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          downloadLitFile(story.title, await getFullStoryText(story));
+        });
+
+        card.querySelector('.delete-story-btn')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (!confirm(`Remove "${story.title}" from your library, Sir?`)) return;
+          state.customStories = state.customStories.filter(s => s.id !== story.id);
+          try { localStorage.setItem(LS_KEY_CUSTOM_STORIES, JSON.stringify(state.customStories)); } catch(err){}
+          state.storyTextCache.delete(story.id);
+          removeStoryChapters(story).then(() => { if (story.isPrivate) deletePrivateStoryFromCloud(story.id); });
+          if (JeevesReader.storyId === story.id) { JeevesReader.pause(); hideReaderBar(); }
+          renderLibrary();
+        });
+
+        sectionGrid.appendChild(card);
+      });
+      archiveContent.appendChild(sectionGrid);
+    };
+
+    renderSection('Jeeves Stories', jeevesStories);
+    renderSection('Personal Stories', personalStories);
+
     grid.className = 'story-book-grid';
     wireGridDropZone(grid);
 
     const fullCatalogue = orderedCatalogue();
 
-    fullCatalogue.forEach(story => {
-      preloadStoryText(story);
-      const card = document.createElement('div');
-      card.className = 'story-book-card';
-      card.dataset.id = story.id;
-
-      const progressIdx = state.readerProgress[story.id] || 0;
-      let pct = 0;
-      if (state.storyTextCache.has(story.id)) {
-        const lines = state.storyTextCache.get(story.id).split(/\r?\n/).filter(l => l.trim().length > 0);
-        if (lines.length > 0) {
-          pct = Math.min(100, Math.round((progressIdx / lines.length) * 100));
-        }
-      }
-
-      const bookmarkText = progressIdx > 0 ? `Bookmark: ${pct}%` : 'Bookmark: 0%';
-      const isCurrent = JeevesReader.storyId === story.id && JeevesReader.isPlaying;
-      const btnLabel = isCurrent ? '⏸ Pause' : (progressIdx > 0 ? '▶ Resume' : '▶ Play');
-      const isCustom = state.customStories.some(s => s.id === story.id);
-      const iconBtnStyle = 'flex:1; background:transparent; border:1px solid rgba(212,175,55,0.45); color:#e9dfc8; border-radius:6px; padding:4px 2px; font-size:10.5px; cursor:pointer; line-height:1.3;';
-
-      card.innerHTML = `
-        <div class="story-drag-handle" title="Drag to reorder">⠿</div>
-        <div class="story-book-title">${escapeHtml(story.title)}</div>
-        <div>
-          <div class="story-book-meta">${bookmarkText}</div>
-          <button class="archive-btn open-btn read-story-btn" type="button" style="width:100%; font-size:12px; padding:6px 6px;">
-            ${btnLabel}
-          </button>
-          <div style="display:flex; gap:4px; margin-top:6px;">
-            <button class="edit-story-btn" type="button" title="Edit Script" style="${iconBtnStyle}">✎ Edit</button>
-            ${isCustom ? `<button class="download-story-btn" type="button" title="Download .lit" style="${iconBtnStyle}">⬇</button>` : ''}
-            ${isCustom ? `<button class="delete-story-btn" type="button" title="Remove from Library" style="${iconBtnStyle}">🗑</button>` : ''}
-          </div>
-        </div>
-      `;
-
-      wireDragHandle(card.querySelector('.story-drag-handle'), card, grid);
-
-      const playBtn = card.querySelector('.read-story-btn');
-      playBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        unlockAudio();
-        if (JeevesReader.storyId === story.id && JeevesReader.isPlaying) {
-          JeevesReader.pause();
-          renderLibrary();
-        } else {
-          const text = await preloadStoryText(story);
-          if (!text) {
-            alert(`Unable to load "${story.title}"`);
-            return;
-          }
-          JeevesReader.load(text, story.id);
-          showReaderBar(story.title);
-          const playPromise = JeevesReader.play();
-          renderLibrary();
-          await playPromise;
-          renderLibrary();
-        }
-      });
-
-      card.tabIndex = 0;
-      card.setAttribute('role', 'button');
-      card.setAttribute('aria-label', `Open ${story.title}`);
-      card.addEventListener('keydown', (e) => {
-        if (e.target === card && (e.key === 'Enter' || e.key === ' ')) {
-          e.preventDefault();
-          card.click();
-        }
-      });
-      card.addEventListener('click', async (e) => {
-        if (e.target.closest('button') || e.target.closest('.story-drag-handle')) return;
-        const text = await preloadStoryText(story);
-        if (!text) {
-          alert(`Unable to load "${story.title}"`);
-          return;
-        }
-        JeevesReader.load(text, story.id);
-        openStoryBookModal(story);
-        updateReaderBar();
-      });
-
-      card.querySelector('.edit-story-btn').addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const currentText = await preloadStoryText(story);
-        openStoryReviewModal(story.title, currentText || '', (finalLit, speakers) => {
-          if (isCustom) {
-            const target = state.customStories.find(s => s.id === story.id);
-            if (target) target.rawLit = finalLit;
-            localStorage.setItem(LS_KEY_CUSTOM_STORIES, JSON.stringify(state.customStories));
-          } else {
-            state.storyOverrides[story.id] = finalLit;
-            localStorage.setItem(LS_KEY_STORY_OVERRIDES, JSON.stringify(state.storyOverrides));
-          }
-          state.storyCharacters[story.id] = speakers;
-          localStorage.setItem(LS_KEY_STORY_CHARACTERS, JSON.stringify(state.storyCharacters));
-          state.storyTextCache.set(story.id, finalLit);
-          pushStoryToCloud(story.id, story.title, finalLit, false);
-          renderLibrary();
-        }, state.storyCharacters[story.id]);
-      });
-
-      card.querySelector('.download-story-btn')?.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const text = await preloadStoryText(story);
-        downloadLitFile(story.title, text);
-      });
-
-      card.querySelector('.delete-story-btn')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (!confirm(`Remove "${story.title}" from your library, Sir?`)) return;
-        state.customStories = state.customStories.filter(s => s.id !== story.id);
-        localStorage.setItem(LS_KEY_CUSTOM_STORIES, JSON.stringify(state.customStories));
-        state.storyTextCache.delete(story.id);
-        if (JeevesReader.storyId === story.id) {
-          JeevesReader.pause();
-          hideReaderBar();
-        }
-        renderLibrary();
-      });
-
-
-      grid.appendChild(card);
-    });
-
     archiveContent.appendChild(grid);
 
     toolbar.querySelector('#search-stories')?.addEventListener('input', async (e) => {
       const term = e.target.value.toLowerCase();
-      const cards = Array.from(grid.querySelectorAll('.story-book-card'));
+      const cards = Array.from(archiveContent.querySelectorAll('.story-book-card'));
       for (const cardEl of cards) {
         const story = fullCatalogue.find(s => s.id === cardEl.dataset.id);
         const text = await preloadStoryText(story);
@@ -6316,7 +6773,6 @@ function toggleTTS(text) {
   closeModalBtn?.addEventListener('click', closeModal);
   modalOverlay?.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
   saveSettingsBtn?.addEventListener('click', saveSettings);
-  document.getElementById('test-offline-btn').addEventListener('click', toggleTestOfflineMode);
   clearHistoryBtn?.addEventListener('click', clearConversation);
   refreshAppBtn?.addEventListener('click', refreshAppCache);
 

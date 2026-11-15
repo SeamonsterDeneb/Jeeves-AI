@@ -13,6 +13,12 @@
   --radius:10px;
   --font-display:'Cormorant Garamond', Georgia, serif;
   --font-ui:'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --cover-dark: linear-gradient(145deg, #3a2216 0%, #20120a 100%);
+  --cover-dark-ink: #f5eedf;
+  --cover-dark-ink-dim: #cfc4b0;
+  --cover-paper: #f1e8d6;
+  --cover-paper-ink: #1f342a;
+  --cover-paper-ink-dim: #5c6b61;
 }
 [data-theme="light"]{
   --ink-deep:#f5efe2;
@@ -1546,12 +1552,17 @@ main#chat {
   .story-book-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    align-items: end;
     gap: 16px;
     padding: 8px 0;
   }
   .story-book-card {
+    --cover-bg: var(--cover-dark);
+    --cover-ink: var(--cover-dark-ink);
+    --cover-ink-dim: var(--cover-dark-ink-dim);
     aspect-ratio: 2 / 3;
-    background: linear-gradient(145deg, #3a2216 0%, #20120a 100%);
+    background: var(--cover-bg);
+    color: var(--cover-ink);
     border: 1px solid rgba(212, 175, 55, 0.45);
     border-radius: 6px;
     padding: 14px 12px;
@@ -1564,6 +1575,7 @@ main#chat {
     text-align: center;
     position: relative;
   }
+
   .story-book-card.dragging{
     opacity: 0.5;
     transform: scale(1.03);
@@ -1591,6 +1603,19 @@ main#chat {
   .story-book-card:hover {
     transform: translateY(-2px);
     border-color: var(--brass-bright);
+  }
+  /* Jeeves Stories (Dark background, light text) */
+  /* .jeeves-card {
+    background: var(--ink-deep);
+    color: var(--parchment);
+  } */
+
+  /* Personal Stories (Light background, dark text) */
+  .story-book-card.personal-card {
+    --cover-bg: var(--cover-paper);
+    --cover-ink: var(--cover-paper-ink);
+    --cover-ink-dim: var(--cover-paper-ink-dim);
+    border: 1px solid var(--hairline);
   }
 
   .reader-bar{
@@ -1702,14 +1727,14 @@ main#chat {
     font-size: 16px;
     font-weight: 700;
     font-style: italic;
-    color: #f5eedf !important;
+    color: var(--cover-ink);
     line-height: 1.35;
     margin-top: 4px;
     letter-spacing: 0.3px;
   }
   .story-book-meta {
     font-size: 11.5px;
-    color: #cfc4b0 !important;
+    color: var(--cover-ink-dim);
     margin-bottom: 8px;
   }
 
@@ -2620,4 +2645,19 @@ header.letterhead {
 }
 footer#composer {
   padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+
+.story-book-author {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--cover-ink-dim);
+  margin-top: 4px;
+}
+.story-first-page-author {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 15px;
+  color: #6b5538;
+  text-align: center;
+  margin: -6px 0 16px;
 }
