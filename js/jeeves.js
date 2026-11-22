@@ -3976,6 +3976,10 @@ async function submitUserSuggestion() {
             autoResizeInput();
             state.history.pop(); // remove the user turn we're about to resend
             persistHistory();
+            if ('vibrate' in navigator) {
+              navigator.vibrate(500);
+            }
+
             const row = modelBubble.closest('.msg-row');
             if (row) row.remove();
             const userRows = chatEl.querySelectorAll('.msg-row.user');
