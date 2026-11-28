@@ -321,10 +321,19 @@
   let cloudSyncTimer = null;
   let currentUser = null;
 
-  function signInWithGoogle() {
+    async function signInWithGoogle() {
     if (!window.auth) return;
     const provider = new firebase.auth.GoogleAuthProvider();
-    window.auth.signInWithRedirect(provider);
+    try {
+      await window.auth.signInWithPopup(provider);
+    } catch (err) {
+      if (err.code === 'auth/popup-blocked' || err.code === 'auth/operation-not-supported-in-this-environment') {
+        window.auth.signInWithRedirect(provider);   // last resort
+      } else if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
+        console.error('Sign-in error:', err);
+        alert(`Authentication error (${err.code}): ${err.message}`);
+      }
+    }
   }
 
 
@@ -1102,7 +1111,8 @@
     });
 
     // 4. Convert bracketed citations [1] or [1, 2] (not markdown links) to HTML superscripts
-    text = text.replace(/(?<!\[)\[(\d+(?:\s*,\s*\d+)*)\](?!\()/g, (match, numsGroup) => {
+    text = text.replace(/\[(\d+(?:\s*,\s*\d+)*)\](?!\()/g, (match, numsGroup, offset, whole) => {
+      if (offset > 0 && whole.charAt(offset - 1) === '[') return match;   // replaces the lookbehind old iOS can't parse
       const links = numsGroup.split(',').map(n => n.trim()).filter(Boolean).map(num => {
         return `<a href="#ref-${scope}-${num}" class="footnote-ref" data-ref="${num}">${num}</a>`;
       });
@@ -1713,6 +1723,17 @@
     if (cleanText) audioPrefetchCache.set(rawText, fetchTtsBlobUrl(cleanText));
   }
 
+    // Returns [firstSentence] or null. Replaces a regex lookbehind that old iOS Safari can't parse.
+  function takeSentence(str) {
+    const re = /[.!?](?=\s|$)/g;
+    let m;
+    while ((m = re.exec(str)) !== null) {
+      if (/\b(?:Mr|Mrs|Ms|Dr|Prof|Rev|etc|e\.g|i\.e)$/.test(str.slice(0, m.index))) continue;
+      return [str.slice(0, m.index + 1)];
+    }
+    return null;
+  }
+
   async function processSpeechQueue() {
     if (isSpeaking || speechQueue.length === 0) return;
     isSpeaking = true;
@@ -1980,7 +2001,8 @@
       // reveal Regina voice option
     const personaField = document.getElementById('persona-field');
     let clickCount = 0;
-    const sectionHeader = document.querySelector('.settings-section:has(#persona-field) .section-header');
+    const personaSection = personaField ? personaField.closest('.settings-section') : null;
+    const sectionHeader = personaSection ? personaSection.querySelector('.section-header') : null;
     if (sectionHeader) {
       sectionHeader.onclick = () => {
         clickCount++;
@@ -3867,7 +3889,7 @@ async function submitUserSuggestion() {
               const limit = refMatch ? refMatch.index : fullText.length;
               let unspoken = fullText.slice(speechIndex, limit);
               let match;
-              while ((match = unspoken.match(/^[\s\S]*?(?<!\b(?:Mr|Mrs|Ms|Dr|Prof|Rev|etc|e\.g|i\.e))[.!?](?=\s|$)/))) {
+              while ((match = takeSentence(unspoken))) {
                 const sentence = match[0].trim();
                 speechIndex += match[0].length;
                 if (sentence) speak(sentence);
@@ -4098,7 +4120,7 @@ async function submitUserSuggestion() {
 
   if (SpeechRecognition && micBtn) {
     recognition = new SpeechRecognition();
-    recognition.continuous = true;
+    recognition.continuous = !/iPhone|iPad|iPod/.test(navigator.userAgent);
     recognition.interimResults = true;
     recognition.lang = navigator.language || 'en-US';
 
