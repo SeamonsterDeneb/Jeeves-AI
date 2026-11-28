@@ -1613,6 +1613,7 @@
   let speechQueue = [];
   let isSpeaking = false;
   let pendingSpokenReferences = null;
+  let refsOnLastReply = false;   // true only if the latest reply carried references
   let lastSpokenText = '';
   const audioPrefetchCache = new Map(); // rawText -> Promise<string|null> (blob URL)
 
@@ -1748,10 +1749,8 @@
     isSpeaking = false;
     if (speechQueue.length > 0) {
       processSpeechQueue();
-    } else if (isAutoSpeakEnabled) {
-      if (pendingSpokenReferences || /\?\s*$/.test(lastSpokenText)) {
-        startListening();
-      }
+    } else if (attendantMode) {
+      startListening();
     }
   }
 
@@ -3645,9 +3644,13 @@ async function submitUserSuggestion() {
     const text = inputEl.value.trim();
     if (!text && pendingAttachments.length === 0) return;
 
-    if (pendingSpokenReferences && /^(yes|yeah|sure|yep|please|yes please|certainly|indeed|i would|tell me|read them)\b/i.test(text.replace(/[.,!?]/g, '').trim())) {
+    // References are read ONLY when explicitly asked for ("References", "read the references", ...).
+    // Anything else, including "yes", goes to the model as a normal message.
+    const REF_REQUEST_REGEX = /^(?:(?:yes|yeah|please|certainly)\s+)*(?:(?:read|give me|let me hear|i would like|i'd like|may i have|can i have|could i have)\s+)?(?:me\s+)?(?:the\s+|those\s+|your\s+)?(?:references?|sources?|citations?)(?:\s+(?:please|now))?$/i;
+    if (pendingSpokenReferences && REF_REQUEST_REGEX.test(text.replace(/[.,!?;:]/g, ' ').replace(/\s+/g, ' ').trim())) {
       const refsToRead = pendingSpokenReferences;
       pendingSpokenReferences = null;
+      refsOnLastReply = false;
       inputEl.value = '';
       autoResizeInput();
       addUserMessage(text);
@@ -3667,7 +3670,9 @@ async function submitUserSuggestion() {
       }
       return;
     }
-    pendingSpokenReferences = null;
+    // Note: pendingSpokenReferences is deliberately kept, so "References" still works
+    // after a "yes, Jeeves" detour. It is replaced when a newer reply has its own references.
+    refsOnLastReply = false;
 
     if (!state.apiKey || !state.model) {
       openModal();
@@ -3761,7 +3766,7 @@ async function submitUserSuggestion() {
     }
 
     const voiceConvoAddendum = isAutoSpeakEnabled
-      ? ` You are currently in a spoken, hands-free conversation — the person is likely driving or otherwise occupied and cannot type or read. Keep this in mind: favor shorter, more conversational sentences over dense written prose, and never ask them to "see below," "click a link," or "read the references," since they cannot look at the screen right now. End your response with one brief, natural, inviting follow-up question so the conversation can continue turn by turn without them needing to touch the screen — the same instinct you already apply when offering to read out the references. Keep this question genuinely relevant to what was just discussed, not generic or tacked on, and ask only one.`
+      ? ` You are currently in a spoken, hands-free conversation — the person is likely driving or otherwise occupied and cannot type or read. Keep this in mind: favor shorter, more conversational sentences over dense written prose, and never ask them to "see below," "click a link," or "read the references," since they cannot look at the screen right now. End the spoken part of your response with one brief, natural, inviting follow-up question so the conversation can continue turn by turn without them needing to touch the screen. Place that question BEFORE the '### References' section, never after it, because the References section is not read aloud unless the person asks for it. Do not offer to read the references or mention them in speech. Keep the question genuinely relevant to what was just discussed, not generic or tacked on, and ask only one.`
       : '';
     const fullSystemInstruction = `Current date and time: ${now}. ${systemInstruction}${artifactContext}${voiceConvoAddendum}; The date and time are already correct and already reflects your local time zone — never use Google Search to look up or double-check the date or time, and never substitute UTC or any other time zone for it. ${systemInstruction}`;
 
@@ -3904,7 +3909,7 @@ async function submitUserSuggestion() {
             speechIndex = refMatch.index;
           }
           pendingSpokenReferences = fullText.slice(refMatch.index).trim();
-          speak(`Would you like the references for this information, ${state.honorific}, or is there anything else I can help you with?`);
+          refsOnLastReply = true;
         } else if (speechIndex < fullText.length) {
           const remaining = fullText.slice(speechIndex).trim();
           if (remaining) speak(remaining);
@@ -4020,6 +4025,8 @@ async function submitUserSuggestion() {
       stopThinkingAnimation();
       sendBtn.disabled = false;
       inputEl.focus();
+      // Safety net: if nothing is speaking (error, empty reply), don't leave attendant mode deaf.
+      if (attendantMode && !isRecognitionActive && !isSpeaking && speechQueue.length === 0) startListening();
     }
   }
 
@@ -4028,10 +4035,24 @@ async function submitUserSuggestion() {
   let recognition = null;
   let isRecognitionActive = false;
   let isAutoRestart = false;
+  let attendantMode = false;   // true from mic tap-on until mic tap-off or "that will be all"
 
   let baseText = '';
   let committedTranscript = '';
   let liveInterim = '';
+
+  // Bare-name trigger: "Jeeves" (or a common mis-hearing) only sends the message
+  // if it is the last thing said AND nothing more follows for a moment.
+  const NAME_STRONG_REGEX = /\b(?:jeeves|jeeve|jeevs|jeves|geeves|geeve)s?[\s.,!?]*$/i;   // rare words: unlikely to be real speech
+  const NAME_WEAK_REGEX   = /\b(?:chiefs?|jeans|teams|jesus|sheaves)[\s.,!?]*$/i;          // ordinary words: demand a longer pause
+  const NAME_SILENCE_MS = 1500;
+  const NAME_WEAK_SILENCE_MS = 2500;
+  let nameTimer = null;
+  let nameArmedKey = '';
+  function clearNameTimer() {
+    if (nameTimer) { clearTimeout(nameTimer); nameTimer = null; }
+    nameArmedKey = '';
+  }
 
   function startListening() {
     if (!recognition) return;
@@ -4049,6 +4070,7 @@ async function submitUserSuggestion() {
   }
 
   function stopListening() {
+    clearNameTimer();
     isRecognitionActive = false;
     baseText = '';
     committedTranscript = '';
@@ -4068,9 +4090,11 @@ async function submitUserSuggestion() {
     recognition.lang = navigator.language || 'en-US';
 
     micBtn.addEventListener('click', () => {
-      if (micBtn.classList.contains('listening')) {
+      if (attendantMode || micBtn.classList.contains('listening')) {
+        attendantMode = false;
         stopListening();
       } else {
+        attendantMode = true;
         unlockAudio();
         toggleAutoSpeak(true);
         startListening();
@@ -4117,19 +4141,48 @@ async function submitUserSuggestion() {
       let combined = (baseText + committedTranscript + ' ' + liveInterim).replace(/\s+/g, ' ');
 
       // Check for stop command
-      if (/\b(stop listening|that will be all |thank you jeeves|you may retire)\b/i.test(combined)) {
+      if (/\b(stop listening|that will be all|you may retire)\b/i.test(combined)) {
+        attendantMode = false;
         stopListening();
         return;
       }
 
+      // Deliberate phrase + name ("over to you, Jeeves"): send instantly, as before.
       if (TRIGGER_REGEX.test(combined)) {
-
+        clearNameTimer();
         combined = combined.replace(TRIGGER_REGEX, '').trim();
         inputEl.value = combined;
         autoResizeInput();
         stopListening();
         sendMessage();
         return;
+      }
+
+      // Bare name at the very end: arm a silence timer. Any new speech cancels it.
+      const strong = NAME_STRONG_REGEX.test(combined);
+      const weak = !strong && NAME_WEAK_REGEX.test(combined);
+      if (strong || weak) {
+        // Final results often repeat the interim text; don't restart the clock for those.
+        const key = combined.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (key !== nameArmedKey) {
+          clearNameTimer();
+          nameArmedKey = key;
+          const stripRe = strong ? NAME_STRONG_REGEX : NAME_WEAK_REGEX;
+          const snapshot = combined;
+          nameTimer = setTimeout(() => {
+            nameTimer = null;
+            nameArmedKey = '';
+            if (!isRecognitionActive) return;
+            const message = snapshot.replace(stripRe, '').trim();
+            if (!message) return;   // just the name on its own: nothing to send
+            inputEl.value = message;
+            autoResizeInput();
+            stopListening();
+            sendMessage();
+          }, strong ? NAME_SILENCE_MS : NAME_WEAK_SILENCE_MS);
+        }
+      } else {
+        clearNameTimer();
       }
 
       inputEl.value = combined;
