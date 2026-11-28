@@ -1532,23 +1532,36 @@
 
   }
   
-  function playListeningChime() {
+    function playListeningChime() {
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const now = ctx.currentTime;
-      [1046.5, 1567.98].forEach(freq => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, now);
-        gain.gain.setValueAtTime(0.05, now);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.35);
-      });
-    } catch(e) {}
+      const AC = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AC();
+      const t = ctx.currentTime;
+      const dur = 0.55;
+
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(185, t);                    // low, closed "hmm…"
+      osc.frequency.linearRampToValueAtTime(190, t + 0.22);
+      osc.frequency.exponentialRampToValueAtTime(250, t + dur); // rising "…?" inflection
+
+      const filter = ctx.createBiquadFilter();                  // mutes the buzz: soft and hummy
+      filter.type = 'lowpass';
+      filter.frequency.value = 700;
+      filter.Q.value = 2;
+
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.07, t + 0.08);   // gentle attack
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + dur);
+      setTimeout(() => { try { ctx.close(); } catch (e) {} }, (dur + 0.2) * 1000);
+    } catch (e) {}
   }
 
   function getJeevesVoice() {
@@ -4085,7 +4098,7 @@ async function submitUserSuggestion() {
 
   if (SpeechRecognition && micBtn) {
     recognition = new SpeechRecognition();
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = navigator.language || 'en-US';
 
